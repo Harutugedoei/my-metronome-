@@ -214,6 +214,7 @@ function startMetronome() {
       intervalId = null;
       currentBeat = 0; // カウンターをリセット
       beatNumber.textContent = "1"; // 拍子番号をリセット
+      dot.style.transform = 'translate(-50%, -50%) rotate(0deg) translate(200px) rotate(0deg)'; // ドットの位置をリセット
     }
 
     startButton.addEventListener('click', startMetronome);
