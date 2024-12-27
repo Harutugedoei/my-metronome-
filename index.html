@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>円形メトロノーム</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background-color: #222;
+      overflow: hidden;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .circle {
+      width: 400px;
+      height: 400px;
+      border: 5px solid white;
+      border-radius: 50%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      font-weight: bold;
+    }
+    .circle .dot {
+      width: 20px;
+      height: 20px;
+      background-color: red;
+      border-radius: 50%;
+      position: absolute;
+      transform: translate(-50%, -50%) rotate(0deg) translate(200px) rotate(0deg);
+    }
+.flash {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: white; /* 赤色に変更 */
+  opacity: 0; /* 初期は透明 */
+  pointer-events: none;
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+.flash.show {
+  transform: scale(1.2) translate(10px, 10px); /* フラッシュが少し移動しながら大きくなる */
+  opacity: 1;
+  background-color: white; /* フラッシュの色を変更 */
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+}
+
+
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <label>BPM: <input type="number" id="bpm" value="80" min="30" max="300"></label>
+    <label>拍子: <input type="number" id="beats" value="4" min="1" max="12"></label>
+    <label>音: 
+      <select id="sound">
+        <option value="click1">Click 1</option>
+        <option value="click2">Click 2</option>
+        <option value="click3">Click 3</option>
+      </select>
+    </label>
+    <label>アクセント:
+      <select id="accent">
+        <option value="1">1</option>
+        <option value="1,3">1 & 3</option>
+        <option value="2,4">2 & 4</option>
+      </select>
+    </label>
+    <button id="start">開始</button>
+    <button id="stop">停止</button>
+  </div>
+  <div class="circle">
+    <div class="dot"></div>
+    <div class="beat-number">1</div>
+  </div>
+  <div class="flash"></div>
+
+  <script>
+    const bpmInput = document.getElementById('bpm');
+    const beatsInput = document.getElementById('beats');
+    const soundSelect = document.getElementById('sound');
+    const accentSelect = document.getElementById('accent');
+    const startButton = document.getElementById('start');
+    const stopButton = document.getElementById('stop');
+    const dot = document.querySelector('.dot');
+    const flash = document.querySelector('.flash');
+    const beatNumber = document.querySelector('.beat-number');
+
+    let intervalId;
+    let currentBeat = 0;
+    let startTime;
+
+    // Audio context for generating sounds
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playSound() {
+      const selectedSound = soundSelect.value;
+      let frequency = 440; // Default frequency
+
+      // Change frequency based on selected sound
+      if (selectedSound === 'click1') frequency = 440; // A4
+      if (selectedSound === 'click2') frequency = 660; // E5
+      if (selectedSound === 'click3') frequency = 880; // A5
+
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.type = 'sine'; // Sound wave type
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+
+      gainNode.gain.setValueAtTime(1, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + 0.1);
+    }
+
+function startMetronome() {
+  const bpm = parseInt(bpmInput.value);
+  const beats = parseInt(beatsInput.value);
+  const interval = (60 / bpm) * 1000; // Time for one beat
+  const rotationDuration = (60000 * beats) / bpm; // 一周する時間（BPMに基づく）
+
+  currentBeat = 0;
+  startTime = performance.now();
+
+  if (intervalId) cancelAnimationFrame(intervalId);
+
+  // 初回の音を鳴らす関数を追加
+  playSound(); // 開始ボタンを押した1拍目に音を鳴らす
+
+  function animate() {
+    const now = performance.now();
+    const elapsed = now - startTime;
+    const progress = (elapsed % rotationDuration) / rotationDuration; // 進行状況を一周に変換
+    const rotation = progress * (360 * beats); // 進行状況を角度に変換
+
+    // ドットを回転させる
+    dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(200px) rotate(-${rotation}deg)`;
+
+    // 進行状況に基づいて拍子を更新
+    const beatProgress = Math.floor(progress * beats); // 拍子の進行状況を計算
+
+    if (beatProgress !== currentBeat) {
+      currentBeat = beatProgress;
+      beatNumber.textContent = (currentBeat % beats) + 1; // 拍子の数字を更新
+      playSound(); // 音を鳴らす
+
+      // アクセント設定に基づいてフラッシュ効果を適用
+      const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
+      const firstBeat = (currentBeat % beats) + 1;
+
+      // フラッシュが光るタイミングの調整
+      if (accent.includes(firstBeat)) {
+        if (accent.includes(1) && (currentBeat === 0 || currentBeat === 2)) {
+          // 1拍目にフラッシュが光る（1を選択した場合）
+          flash.classList.add('show');
+          setTimeout(() => {
+            flash.classList.remove('show');
+          }, 170);
+        }
+        if (accent.includes(3) && (currentBeat === 2)) {
+          // 3拍目にフラッシュが光る（1＆3を選択した場合）
+          flash.classList.add('show');
+          setTimeout(() => {
+            flash.classList.remove('show');
+          }, 170);
+        }
+        if (accent.includes(2) && (currentBeat === 1 || currentBeat === 3)) {
+          // 2拍目にフラッシュが光る（2＆4を選択した場合）
+          flash.classList.add('show');
+          setTimeout(() => {
+            flash.classList.remove('show');
+          }, 170);
+        }
+        if (accent.includes(4) && (currentBeat === 3)) {
+          // 4拍目にフラッシュが光る（2＆4を選択した場合）
+          flash.classList.add('show');
+          setTimeout(() => {
+            flash.classList.remove('show');
+          }, 170);
+        }
+      }
+    }
+
+    intervalId = requestAnimationFrame(animate);
+  }
+
+  animate();
+}
+
+    function stopMetronome() {
+      if (intervalId) cancelAnimationFrame(intervalId);
+      intervalId = null;
+      currentBeat = 0; // カウンターをリセット
+      beatNumber.textContent = "1"; // 拍子番号をリセット
+    }
+
+    startButton.addEventListener('click', startMetronome);
+    stopButton.addEventListener('click', stopMetronome);
+  </script>
+</body>
+</html>
