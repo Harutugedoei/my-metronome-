@@ -43,26 +43,25 @@
       position: absolute;
       transform: translate(-50%, -50%) rotate(0deg) translate(200px) rotate(0deg);
     }
-.flash {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: white; /* 赤色に変更 */
-  opacity: 0; /* 初期は透明 */
-  pointer-events: none;
-  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
-}
-
-.flash.show {
-  transform: scale(1.2) translate(10px, 10px); /* フラッシュが少し移動しながら大きくなる */
-  opacity: 1;
-  background-color: white; /* フラッシュの色を変更 */
-  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
-}
-
-
+    .flash {
+      position: absolute;
+      top: 50%;
+      left: calc(50% + 200px); /* ドットの右側に位置 */
+      width: 100px;
+      height: 100px;
+      background-color: white; 
+      opacity: 0; /* 初期は透明 */
+      pointer-events: none;
+      transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+      border-radius: 50%; /* 円形にする */
+      transform: translate(-50%, -50%);
+    }
+    .flash.show {
+      transform: translate(-50%, -50%) scale(1.2); /* フラッシュが少し大きくなる */
+      opacity: 1;
+      background-color: white; /* フラッシュの色を変更 */
+      transition: opacity 0.1s ease-in-out, transform 0.1s ease-in-out;
+    }
   </style>
 </head>
 <body>
@@ -135,79 +134,55 @@
       oscillator.stop(audioContext.currentTime + 0.1);
     }
 
-function startMetronome() {
-  const bpm = parseInt(bpmInput.value);
-  const beats = parseInt(beatsInput.value);
-  const interval = (60 / bpm) * 1000; // Time for one beat
-  const rotationDuration = (60000 * beats) / bpm; // 一周する時間（BPMに基づく）
+    function startMetronome() {
+      const bpm = parseInt(bpmInput.value);
+      const beats = parseInt(beatsInput.value);
+      const interval = (60 / bpm) * 1000; // Time for one beat
+      const rotationDuration = (60000 * beats) / bpm; // 一周する時間（BPMに基づく）
 
-  currentBeat = 0;
-  startTime = performance.now();
+      currentBeat = 0;
+      startTime = performance.now();
 
-  if (intervalId) cancelAnimationFrame(intervalId);
+      if (intervalId) cancelAnimationFrame(intervalId);
 
-  // 初回の音を鳴らす関数を追加
-  playSound(); // 開始ボタンを押した1拍目に音を鳴らす
+      // 初回の音を鳴らす関数を追加
+      playSound(); // 開始ボタンを押した1拍目に音を鳴らす
 
-  function animate() {
-    const now = performance.now();
-    const elapsed = now - startTime;
-    const progress = (elapsed % rotationDuration) / rotationDuration; // 進行状況を一周に変換
-    const rotation = progress * (360 * beats); // 進行状況を角度に変換
+      function animate() {
+        const now = performance.now();
+        const elapsed = now - startTime;
+        const progress = (elapsed % rotationDuration) / rotationDuration; // 進行状況を一周に変換
+        const rotation = progress * (360 * beats); // 進行状況を角度に変換
 
-    // ドットを回転させる
-    dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(200px) rotate(-${rotation}deg)`;
+        // ドットを回転させる
+        dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(200px) rotate(-${rotation}deg)`;
 
-    // 進行状況に基づいて拍子を更新
-    const beatProgress = Math.floor(progress * beats); // 拍子の進行状況を計算
+        // 進行状況に基づいて拍子を更新
+        const beatProgress = Math.floor(progress * beats); // 拍子の進行状況を計算
 
-    if (beatProgress !== currentBeat) {
-      currentBeat = beatProgress;
-      beatNumber.textContent = (currentBeat % beats) + 1; // 拍子の数字を更新
-      playSound(); // 音を鳴らす
+        if (beatProgress !== currentBeat) {
+          currentBeat = beatProgress;
+          beatNumber.textContent = (currentBeat % beats) + 1; // 拍子の数字を更新
+          playSound(); // 音を鳴らす
 
-      // アクセント設定に基づいてフラッシュ効果を適用
-      const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
-      const firstBeat = (currentBeat % beats) + 1;
+          // アクセント設定に基づいてフラッシュ効果を適用
+          const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
+          const firstBeat = (currentBeat % beats) + 1;
 
-      // フラッシュが光るタイミングの調整
-      if (accent.includes(firstBeat)) {
-        if (accent.includes(1) && (currentBeat === 0 || currentBeat === 2)) {
-          // 1拍目にフラッシュが光る（1を選択した場合）
-          flash.classList.add('show');
-          setTimeout(() => {
-            flash.classList.remove('show');
-          }, 170);
+          // フラッシュが光るタイミングの調整
+          if (accent.includes(firstBeat)) {
+            flash.classList.add('show');
+            setTimeout(() => {
+              flash.classList.remove('show');
+            }, 300);
+          }
         }
-        if (accent.includes(3) && (currentBeat === 2)) {
-          // 3拍目にフラッシュが光る（1＆3を選択した場合）
-          flash.classList.add('show');
-          setTimeout(() => {
-            flash.classList.remove('show');
-          }, 170);
-        }
-        if (accent.includes(2) && (currentBeat === 1 || currentBeat === 3)) {
-          // 2拍目にフラッシュが光る（2＆4を選択した場合）
-          flash.classList.add('show');
-          setTimeout(() => {
-            flash.classList.remove('show');
-          }, 170);
-        }
-        if (accent.includes(4) && (currentBeat === 3)) {
-          // 4拍目にフラッシュが光る（2＆4を選択した場合）
-          flash.classList.add('show');
-          setTimeout(() => {
-            flash.classList.remove('show');
-          }, 170);
-        }
+
+        intervalId = requestAnimationFrame(animate);
       }
+
+      animate();
     }
-
-    intervalId = requestAnimationFrame(animate);
-  }
-
-  animate();
-}
 
     function stopMetronome() {
       if (intervalId) cancelAnimationFrame(intervalId);
