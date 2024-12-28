@@ -143,6 +143,14 @@
       oscillator.stop(audioContext.currentTime + 0.1);
     }
 
+    // フラッシュを表示する関数
+    function showFlash() {
+      flash.classList.add('show');
+      setTimeout(() => {
+        flash.classList.remove('show');
+      }, 300);
+    }
+
     // メトロノームを開始する関数
     function startMetronome() {
       const bpm = parseInt(bpmInput.value);
@@ -158,6 +166,12 @@
 
       // 初回の音を鳴らす
       playSound();
+
+      // 初回のフラッシュを表示
+      const firstBeat = (currentBeat % beats) + 1;
+      if (accent.includes(firstBeat)) {
+        showFlash();
+      }
 
       function animate() {
         const now = performance.now(); // 現在の時刻を取得
@@ -178,10 +192,7 @@
           // フラッシュが光るタイミングの調整
           const firstBeat = (currentBeat % beats) + 1;
           if (accent.includes(firstBeat)) {
-            flash.classList.add('show');
-            setTimeout(() => {
-              flash.classList.remove('show');
-            }, 300);
+            showFlash();
           }
           playSound(); // 音を再生
         }
