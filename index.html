@@ -49,7 +49,7 @@
       left: calc(50% + 200px); /* ドットの右側に位置 */
       width: 100px;
       height: 100px;
-      background-color: white; 
+      background-color: #b0c4de; /* フラッシュの色を青みのかかった灰色に変更 */
       opacity: 0; /* 初期は透明 */
       pointer-events: none;
       transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
@@ -59,7 +59,7 @@
     .flash.show {
       transform: translate(-50%, -50%) scale(1.2); /* フラッシュが少し大きくなる */
       opacity: 1;
-      background-color: white; /* フラッシュの色を変更 */
+      background-color: #b0c4de; /* フラッシュの色を変更 */
       transition: opacity 0.1s ease-in-out, transform 0.1s ease-in-out;
     }
   </style>
