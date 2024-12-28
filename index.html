@@ -66,8 +66,8 @@
 </head>
 <body>
   <div class="controls">
-    <label>BPM: <input type="number" id="bpm" value="80" min="30" max="300"></label>
-    <label>拍子: <input type="number" id="beats" value="4" min="1" max="12"></label>
+    <label>BPM: <input type="number" id="bpm" value="80" min="30" max="250"></label>
+    <label>拍子: <input type="number" id="beats" value="4" min="1" max="7"></label>
     <label>音: 
       <select id="sound">
         <option value="click1">Click 1</option>
@@ -93,6 +93,7 @@
   <div class="flash"></div>
 
   <script>
+    // 各要素を取得
     const bpmInput = document.getElementById('bpm');
     const beatsInput = document.getElementById('beats');
     const soundSelect = document.getElementById('sound');
@@ -103,18 +104,20 @@
     const flash = document.querySelector('.flash');
     const beatNumber = document.querySelector('.beat-number');
 
+    // 変数の初期化
     let intervalId;
     let currentBeat = 0;
     let startTime;
 
-    // Audio context for generating sounds
+    // 音声生成のためのオーディオコンテキストを作成
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
+    // 音を再生する関数
     function playSound() {
       const selectedSound = soundSelect.value;
-      let frequency = 440; // Default frequency
+      let frequency = 440; // デフォルトの周波数
 
-      // Change frequency based on selected sound
+      // 選択された音に基づいて周波数を変更
       if (selectedSound === 'click1') frequency = 440; // A4
       if (selectedSound === 'click2') frequency = 660; // E5
       if (selectedSound === 'click3') frequency = 880; // A5
@@ -122,7 +125,7 @@
       const oscillator = audioContext.createOscillator();
       const gainNode = audioContext.createGain();
 
-      oscillator.type = 'sine'; // Sound wave type
+      oscillator.type = 'sine'; // サウンド波形のタイプ
       oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
 
       gainNode.gain.setValueAtTime(1, audioContext.currentTime);
@@ -135,10 +138,11 @@
       oscillator.stop(audioContext.currentTime + 0.1);
     }
 
+    // メトロノームを開始する関数
     function startMetronome() {
       const bpm = parseInt(bpmInput.value);
       const beats = parseInt(beatsInput.value);
-      const interval = (60 / bpm) * 1000; // Time for one beat
+      const interval = (60 / bpm) * 1000; // 1拍の時間
       const rotationDuration = (60000 * beats) / bpm; // 一周する時間（BPMに基づく）
 
       currentBeat = 0;
@@ -187,6 +191,7 @@
       animate();
     }
 
+    // メトロノームを停止する関数
     function stopMetronome() {
       if (intervalId) cancelAnimationFrame(intervalId);
       intervalId = null;
@@ -195,6 +200,7 @@
       dot.style.transform = 'translate(-50%, -50%) rotate(0deg) translate(200px) rotate(0deg)'; // ドットの位置をリセット
     }
 
+    // ボタンにイベントリスナーを追加
     startButton.addEventListener('click', startMetronome);
     stopButton.addEventListener('click', stopMetronome);
   </script>
