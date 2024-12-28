@@ -158,13 +158,13 @@
         const now = performance.now();
         const elapsed = now - startTime;
         const progress = (elapsed % rotationDuration) / rotationDuration; // 進行状況を一周に変換
-        const rotation = progress * (360 * beats); // 進行状況を角度に変換
+        const rotation = progress * 360; // 進行状況を角度に変換
 
         // ドットを回転させる
         dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(200px) rotate(-${rotation}deg)`;
 
         // 進行状況に基づいて拍子を更新
-        const beatProgress = Math.floor(progress * beats); // 拍子の進行状況を計算
+        const beatProgress = Math.floor(elapsed / interval); // どの拍子かを計算
 
         if (beatProgress !== currentBeat) {
           currentBeat = beatProgress;
