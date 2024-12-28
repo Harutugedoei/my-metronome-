@@ -146,8 +146,11 @@
 
       if (intervalId) cancelAnimationFrame(intervalId);
 
-      // 初回の音を鳴らす関数を追加
-      playSound(); // 開始ボタンを押した1拍目に音を鳴らす
+      // 初回の音を鳴らす条件を追加
+      const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
+      if (accent.includes(1) || accent.includes(1) && accent.includes(3)) {
+        playSound(); // 開始ボタンを押した1拍目に音を鳴らす
+      }
 
       function animate() {
         const now = performance.now();
@@ -165,25 +168,16 @@
           currentBeat = beatProgress;
           beatNumber.textContent = (currentBeat % beats) + 1; // 拍子の数字を更新
 
-          // アクセント設定に基づいてフラッシュ効果を適用
-          const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
-          const firstBeat = (currentBeat % beats) + 1;
-
           // フラッシュが光るタイミングの調整
+          const firstBeat = (currentBeat % beats) + 1;
           if (accent.includes(firstBeat)) {
             flash.classList.add('show');
             setTimeout(() => {
               flash.classList.remove('show');
             }, 300);
-            // アクセントがNoneでない場合は音を鳴らす
-            if (!accent.includes(0)) {
-              playSound();
-            }
+            playSound();
           } else {
-            // アクセントがNoneでない場合は音を鳴らす
-            if (!accent.includes(0)) {
-              playSound();
-            }
+            playSound();
           }
         }
 
