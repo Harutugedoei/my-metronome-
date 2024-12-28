@@ -41,7 +41,9 @@
       background-color: #6A5ACD; /* ドットの色 */
       border-radius: 50%;
       position: absolute;
-      transform: translate(-50%, -50%) rotate(0deg) translate(200px) rotate(0deg);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) rotate(0deg) translate(190px) rotate(0deg);
     }
     .flash {
       position: absolute;
@@ -155,18 +157,18 @@
       playSound();
 
       function animate() {
-        const now = performance.now();
-        const elapsed = now - startTime;
-        const progress = (elapsed % rotationDuration) / rotationDuration; // 進行状況を一周に変換
+        const now = performance.now(); // 現在の時刻を取得
+        const elapsed = now - startTime; // 経過時間を計算
+        const progress = (elapsed % rotationDuration) / rotationDuration; // 一周の進行状況を計算
         const rotation = progress * 360; // 進行状況を角度に変換
 
         // ドットを回転させる
-        dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(200px) rotate(-${rotation}deg)`;
+        dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(190px) rotate(-${rotation}deg)`;
 
         // 進行状況に基づいて拍子を更新
-        const beatProgress = Math.floor(elapsed / interval); // どの拍子かを計算
+        const beatProgress = Math.floor(elapsed / interval); // 現在の拍子を計算
 
-        if (beatProgress !== currentBeat) {
+        if (beatProgress !== currentBeat) { // 拍子が変わった場合
           currentBeat = beatProgress;
           beatNumber.textContent = (currentBeat % beats) + 1; // 拍子の数字を更新
 
@@ -178,10 +180,10 @@
               flash.classList.remove('show');
             }, 300);
           }
-          playSound();
+          playSound(); // 音を再生
         }
 
-        intervalId = requestAnimationFrame(animate);
+        intervalId = requestAnimationFrame(animate); // 次のフレームで再度実行
       }
 
       animate();
@@ -189,11 +191,11 @@
 
     // メトロノームを停止する関数
     function stopMetronome() {
-      if (intervalId) cancelAnimationFrame(intervalId);
+      if (intervalId) cancelAnimationFrame(intervalId); // アニメーションを停止
       intervalId = null;
       currentBeat = 0; // カウンターをリセット
       beatNumber.textContent = "1"; // 拍子番号をリセット
-      dot.style.transform = 'translate(-50%, -50%) rotate(0deg) translate(200px) rotate(0deg)'; // ドットの位置をリセット
+      dot.style.transform = 'translate(-50%, -50%) rotate(0deg) translate(190px) rotate(0deg)'; // ドットの位置をリセット
     }
 
     // ボタンにイベントリスナーを追加
