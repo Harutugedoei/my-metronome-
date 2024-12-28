@@ -142,6 +142,7 @@
     function startMetronome() {
       const bpm = parseInt(bpmInput.value);
       const beats = parseInt(beatsInput.value);
+      const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
       const interval = (60 / bpm) * 1000; // 1拍の時間
       const rotationDuration = (60000 * beats) / bpm; // 一周する時間（BPMに基づく）
 
@@ -150,11 +151,8 @@
 
       if (intervalId) cancelAnimationFrame(intervalId);
 
-      // 初回の音を鳴らす条件を追加
-      const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
-      if (accent.includes(1) || accent.includes(1) && accent.includes(3)) {
-        playSound(); // 開始ボタンを押した1拍目に音を鳴らす
-      }
+      // 初回の音を鳴らす
+      playSound();
 
       function animate() {
         const now = performance.now();
@@ -179,10 +177,8 @@
             setTimeout(() => {
               flash.classList.remove('show');
             }, 300);
-            playSound();
-          } else {
-            playSound();
           }
+          playSound();
         }
 
         intervalId = requestAnimationFrame(animate);
