@@ -52,7 +52,7 @@
       top: 50%; /* フラッシュを円の中心に */
       left: 50%; /* フラッシュを円の中心に */
       width: 70%; /* 円の幅の70% */
-      height: 70%; /* 円の高さの70% */
+      aspect-ratio: 1; /* 縦横比を1:1に設定 */
       background-color: #b0c4de; /* フラッシュの色を変更 */
       opacity: 0; /* 初期は透明 */
       pointer-events: none;
@@ -85,7 +85,7 @@
       }
       .flash {
         width: 70%; /* 円の幅の70% */
-        height: 70%; /* 円の高さの70% */
+        aspect-ratio: 1; /* 縦横比を1:1に設定 */
         left: 50%; /* 中央に配置 */
       }
     }
