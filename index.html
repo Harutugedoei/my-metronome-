@@ -165,7 +165,7 @@
     // フラッシュを表示する関数
     function showFlash() {
       const radius = document.querySelector('.circle').offsetWidth / 2; // 円の半径を計算
-      flash.style.left = `calc(50% + ${radius}px)`; // フラッシュの位置を円の半径分右にずらす
+      flash.style.left = '0%'; /* `calc(50% + ${radius}px)`; // フラッシュの位置を円の半径分右にずらす */
       flash.style.top = '51.5%'; // フラッシュの位置を円の中心の高さに設定。微調整した。
       flash.classList.add('show'); // フラッシュの表示を開始
       setTimeout(() => {
