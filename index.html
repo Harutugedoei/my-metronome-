@@ -49,10 +49,10 @@
     }
     .flash {
       position: absolute;
-      top: 52.5%; /* フラッシュを円の中心の高さに微調整 */
-      left: 50%; /* フラッシュを円の中心に配置 */
-      width: 50vmin; /* 画面の短い辺の50% */
-      height: 50vmin; /* 画面の短い辺の50% */
+      top: 50%; /* フラッシュを円の中心に */
+      left: 50%; /* フラッシュを円の中心に */
+      width: 50%; /* 円の幅の50% */
+      height: 50%; /* 円の高さの50% */
       background-color: #b0c4de; /* フラッシュの色を変更 */
       opacity: 0; /* 初期は透明 */
       pointer-events: none;
@@ -84,8 +84,8 @@
         transform: translate(-50%, -50%) rotate(0deg) translate(190px) rotate(0deg);
       }
       .flash {
-        width: 200px; /* サイズを調整 */
-        height: 200px; /* サイズを調整 */
+        width: 50%; /* 円の幅の50% */
+        height: 50%; /* 円の高さの50% */
         left: 50%; /* 中央に配置 */
       }
     }
@@ -171,7 +171,7 @@
     // フラッシュを表示する関数
     function showFlash() {
       flash.style.left = '50%'; // フラッシュの位置を円の中心に設定
-      flash.style.top = '52.5%'; // フラッシュの位置を円の中心に微調整
+      flash.style.top = '50%'; // フラッシュの位置を円の中心に設定
       flash.classList.add('show'); // フラッシュの表示を開始
       setTimeout(() => {
         flash.classList.remove('show'); // 一定時間後にフラッシュの表示を終了
