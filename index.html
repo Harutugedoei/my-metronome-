@@ -20,12 +20,14 @@
     }
     .controls {
       display: flex;
+      flex-wrap: wrap; /* 要素を折り返す */
       gap: 10px;
       margin-bottom: 20px;
+      justify-content: center; /* 中央に配置 */
     }
     .circle {
-      width: 400px;
-      height: 400px;
+      width: 80vmin; /* 縦横の短い辺の80% */
+      height: 80vmin; /* 縦横の短い辺の80% */
       border: 5px solid #A4B494; /* 円の色 */
       border-radius: 50%;
       position: relative;
@@ -36,21 +38,22 @@
       font-weight: bold;
     }
     .circle .dot {
-      width: 20px;
-      height: 20px;
+      width: 5vmin; /* 画面の短い辺の5% */
+      height: 5vmin; /* 画面の短い辺の5% */
       background-color: #6A5ACD; /* ドットの色 */
       border-radius: 50%;
       position: absolute;
       top: 50%;
       left: 50%;
-      transform: translate(-50%, -50%) rotate(0deg) translate(190px) rotate(0deg);
+      transform: translate(-50%, -50%) rotate(0deg) translate(40vmin) rotate(0deg); /* 40vminはcircleの幅の半分 */
     }
+
     .flash {
       position: absolute;
-      top: 50%;
-      left: calc(50% + 200px); /* ドットの右側に位置 */
-      width: 100px;
-      height: 100px;
+      top: 50%; /* フラッシュを円の中心の高さに配置 */
+      left: 50%; /* フラッシュを円の中心に配置 */
+      width: 25vmin; /* 画面の短い辺の25% */
+      height: 25vmin; /* 画面の短い辺の25% */
       background-color: #b0c4de; /* フラッシュの色を青みのかかった灰色に変更 */
       opacity: 0; /* 初期は透明 */
       pointer-events: none;
@@ -63,6 +66,22 @@
       opacity: 1;
       background-color: #b0c4de; /* フラッシュの色を変更 */
       transition: opacity 0.1s ease-in-out, transform 0.1s ease-in-out;
+    }
+    @media (min-width: 768px) {
+      .circle {
+        width: 400px;
+        height: 400px;
+      }
+      .circle .dot {
+        width: 20px;
+        height: 20px;
+        transform: translate(-50%, -50%) rotate(0deg) translate(190px) rotate(0deg);
+      }
+      .flash {
+        width: 100px;
+        height: 100px;
+        left: 50%; /* 中央に配置 */
+      }
     }
   </style>
 </head>
@@ -145,9 +164,12 @@
 
     // フラッシュを表示する関数
     function showFlash() {
-      flash.classList.add('show');
+      const radius = document.querySelector('.circle').offsetWidth / 2; // 円の半径を計算
+      flash.style.left = `calc(50% + ${radius}px)`; // フラッシュの位置を円の半径分右にずらす
+      flash.style.top = '51.5%'; // フラッシュの位置を円の中心の高さに設定
+      flash.classList.add('show'); // フラッシュの表示を開始
       setTimeout(() => {
-        flash.classList.remove('show');
+        flash.classList.remove('show'); // 一定時間後にフラッシュの表示を終了
       }, 300);
     }
 
@@ -180,7 +202,8 @@
         const rotation = progress * 360; // 進行状況を角度に変換
 
         // ドットを回転させる
-        dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(190px) rotate(-${rotation}deg)`;
+        const radius = document.querySelector('.circle').offsetWidth / 2 - document.querySelector('.dot').offsetWidth / 2; // 半径を計算
+        dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(${radius}px) rotate(-${rotation}deg)`; // 半径を使用
 
         // 進行状況に基づいて拍子を更新
         const beatProgress = Math.floor(elapsed / interval); // 現在の拍子を計算
@@ -192,7 +215,7 @@
           // フラッシュが光るタイミングの調整
           const firstBeat = (currentBeat % beats) + 1;
           if (accent.includes(firstBeat)) {
-            showFlash();
+            showFlash(); // フラッシュを表示
           }
           playSound(); // 音を再生
         }
@@ -209,7 +232,8 @@
       intervalId = null;
       currentBeat = 0; // カウンターをリセット
       beatNumber.textContent = "1"; // 拍子番号をリセット
-      dot.style.transform = 'translate(-50%, -50%) rotate(0deg) translate(190px) rotate(0deg)'; // ドットの位置をリセット
+      const radius = document.querySelector('.circle').offsetWidth / 2 - document.querySelector('.dot').offsetWidth / 2; // 半径を計算
+      dot.style.transform = `translate(-50%, -50%) rotate(0deg) translate(${radius}px) rotate(0deg)`; // ドットの位置をリセット
     }
 
     // ボタンにイベントリスナーを追加
