@@ -154,6 +154,7 @@
       <label>音量: <input type="range" id="volume" min="0" max="100" value="50"></label> <!-- 音量スライダーを追加 -->
       <button id="start">開始</button>
       <button id="stop">停止</button>
+      <button id="tap-tempo">タップテンポ</button> <!-- タップテンポボタンを追加 -->
     </div>
     <div class="circle-container">
       <div class="circle">
@@ -173,6 +174,7 @@
     const volumeInput = document.getElementById('volume'); // 音量スライダーを取得
     const startButton = document.getElementById('start');
     const stopButton = document.getElementById('stop');
+    const tapTempoButton = document.getElementById('tap-tempo'); // タップテンポボタンを取得
     const dot = document.querySelector('.dot');
     const flash = document.querySelector('.flash');
     const beatNumber = document.querySelector('.beat-number');
@@ -181,6 +183,9 @@
     let intervalId;
     let currentBeat = 0;
     let startTime;
+
+    // タップテンポ用の変数
+    let tapTimes = [];
 
     // 音声生成のためのオーディオコンテキストを作成
     const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -285,9 +290,36 @@
       dot.style.transform = `translate(-50%, -50%) rotate(0deg) translate(${radius}px) rotate(0deg)`; // ドットの位置をリセット
     }
 
+    // タップテンポを更新する関数
+    function updateTapTempo() {
+      const now = performance.now();
+      tapTimes.push(now);
+
+      // 過去5回のタップ間隔を計算
+      if (tapTimes.length > 5) {
+        tapTimes.shift(); // 最初のタップを削除
+      }
+
+      if (tapTimes.length > 1) {
+        const intervals = [];
+        for (let i = 1; i < tapTimes.length; i++) {
+          intervals.push(tapTimes[i] - tapTimes[i - 1]);
+        }
+        const averageInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+        let bpm = Math.round(60000 / averageInterval);
+        
+        // BPMを30から250の範囲に制限
+        if (bpm < 30) bpm = 30;
+        if (bpm > 250) bpm = 250;
+
+        bpmInput.value = bpm;
+      }
+    }
+
     // ボタンにイベントリスナーを追加
     startButton.addEventListener('click', startMetronome);
     stopButton.addEventListener('click', stopMetronome);
+    tapTempoButton.addEventListener('click', updateTapTempo); // タップテンポボタンにイベントリスナーを追加
   </script>
 </body>
 </html>
