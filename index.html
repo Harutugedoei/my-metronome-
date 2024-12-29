@@ -17,6 +17,7 @@
       overflow: hidden;
       color: #A4B494; /* テキストの色 */
       font-family: Arial, sans-serif;
+      font-size: 4vw; /* 基本のフォントサイズをビューポート幅に基づいて設定 */
     }
     .controls {
       display: flex;
@@ -77,7 +78,7 @@
       background-color: #b0c4de; /* フラッシュの色を変更 */
       opacity: 0; /* 初期は透明 */
       pointer-events: none;
-      transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+      transition: opacity 0.12s ease-in-out, transform 0.12s ease-in-out;
       border-radius: 50%; /* 円形にする */
       transform: translate(-50%, -50%);
       z-index: 1; /* フラッシュを最前面に */
@@ -87,14 +88,18 @@
       transform: translate(-50%, -50%) scale(1.2); /* フラッシュが少し大きくなる */
       opacity: 1;
       background-color: #b0c4de; /* フラッシュの色を変更 */
-      transition: opacity 0.1s ease-in-out, transform 0.1s ease-in-out;
+      transition: opacity 0.12s ease-in-out, transform 0.12s ease-in-out;
     }
     .beat-number {
       position: absolute;
       z-index: 2; /* 拍子の数字をフラッシュの上に表示 */
       color: #A4B494;
+      font-size: 8vw; /* ビューポート幅に基づいてフォントサイズを設定 */
     }
     @media (min-width: 768px) {
+      body {
+        font-size: 2vw; /* 大きな画面ではフォントサイズを少し小さく調整 */
+      }
       .circle {
         width: 400px;
         height: 400px;
@@ -108,6 +113,9 @@
         width: 80vmin; /* 縦横の短い辺の80% */
         height: 80vmin; /* 縦横の短い辺の80% */
         left: 50%; /* 中央に配置 */
+      }
+      .beat-number {
+        font-size: 4vw; /* 大きな画面ではフォントサイズを調整 */
       }
     }
   </style>
@@ -198,7 +206,7 @@
       flash.classList.add('show'); // フラッシュの表示を開始
       setTimeout(() => {
         flash.classList.remove('show'); // 一定時間後にフラッシュの表示を終了
-      }, 120);
+      }, 120); // フラッシュの表示時間を0.12秒に変更
     }
 
     // メトロノームを開始する関数
