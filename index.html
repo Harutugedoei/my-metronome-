@@ -47,25 +47,31 @@
       left: 50%;
       transform: translate(-50%, -50%) rotate(0deg) translate(40vmin) rotate(0deg); /* 40vminはcircleの幅の半分 */
     }
-
     .flash {
       position: absolute;
-      top: 50%; /* フラッシュを円の中心の高さに配置 */
+      top: 52.5%; /* フラッシュを円の中心の高さに微調整 */
       left: 50%; /* フラッシュを円の中心に配置 */
-      width: 25vmin; /* 画面の短い辺の25% */
-      height: 25vmin; /* 画面の短い辺の25% */
-      background-color: #b0c4de; /* フラッシュの色を青みのかかった灰色に変更 */
+      width: 50vmin; /* 画面の短い辺の50% */
+      height: 50vmin; /* 画面の短い辺の50% */
+      background-color: #b0c4de; /* フラッシュの色を変更 */
       opacity: 0; /* 初期は透明 */
       pointer-events: none;
       transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
       border-radius: 50%; /* 円形にする */
       transform: translate(-50%, -50%);
+      z-index: 1; /* フラッシュを最前面に */
     }
+
     .flash.show {
       transform: translate(-50%, -50%) scale(1.2); /* フラッシュが少し大きくなる */
       opacity: 1;
       background-color: #b0c4de; /* フラッシュの色を変更 */
       transition: opacity 0.1s ease-in-out, transform 0.1s ease-in-out;
+    }
+    .beat-number {
+      position: absolute;
+      z-index: 2; /* 拍子の数字をフラッシュの上に表示 */
+      color: #A4B494;
     }
     @media (min-width: 768px) {
       .circle {
@@ -78,8 +84,8 @@
         transform: translate(-50%, -50%) rotate(0deg) translate(190px) rotate(0deg);
       }
       .flash {
-        width: 100px;
-        height: 100px;
+        width: 200px; /* サイズを調整 */
+        height: 200px; /* サイズを調整 */
         left: 50%; /* 中央に配置 */
       }
     }
@@ -164,9 +170,8 @@
 
     // フラッシュを表示する関数
     function showFlash() {
-      const radius = document.querySelector('.circle').offsetWidth / 2; // 円の半径を計算
-      flash.style.left = '0%'; /* `calc(50% + ${radius}px)`; // フラッシュの位置を円の半径分右にずらす */
-      flash.style.top = '51.5%'; // フラッシュの位置を円の中心の高さに設定。微調整した。
+      flash.style.left = '50%'; // フラッシュの位置を円の中心に設定
+      flash.style.top = '52.5%'; // フラッシュの位置を円の中心に微調整
       flash.classList.add('show'); // フラッシュの表示を開始
       setTimeout(() => {
         flash.classList.remove('show'); // 一定時間後にフラッシュの表示を終了
@@ -210,12 +215,12 @@
 
         if (beatProgress !== currentBeat) { // 拍子が変わった場合
           currentBeat = beatProgress;
-          beatNumber.textContent = (currentBeat % beats) + 1; // 拍子の数字を更新
+          const beat = (currentBeat % beats) + 1; // 拍子の数字を計算
+          beatNumber.textContent = beat; // 拍子の数字を更新
 
           // フラッシュが光るタイミングの調整
-          const firstBeat = (currentBeat % beats) + 1;
-          if (accent.includes(firstBeat)) {
-            showFlash(); // フラッシュを表示
+          if (accent.includes(beat)) {
+            showFlash();
           }
           playSound(); // 音を再生
         }
