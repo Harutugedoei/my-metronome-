@@ -86,7 +86,7 @@
     }
 
     .flash.show {
-      transform: translate(-50%, -50%) scale(1.2); /* フラッシュが少し大きくなる */
+      transform: translate(-50%, -50%) scale(1); /* フラッシュのサイズをそのままにする */
       opacity: 1;
       background-color: #b0c4de; /* フラッシュの色を変更 */
       transition: opacity 0.12s ease-in-out, transform 0.12s ease-in-out;
@@ -111,8 +111,8 @@
         transform: translate(-50%, -50%) rotate(0deg) translate(20vmin) rotate(0deg);
       }
       .flash {
-        width: 80vmin; /* 縦横の短い辺の80% */
-        height: 80vmin; /* 縦横の短い辺の80% */
+        width: 40vmin; /* 縦横の短い辺の40% */
+        height: 40vmin; /* 縦横の短い辺の40% */
         left: 50%; /* 中央に配置 */
       }
       .beat-number {
