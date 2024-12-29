@@ -51,7 +51,7 @@
       position: absolute;
       top: 50%; /* フラッシュを円の中心に */
       left: 50%; /* フラッシュを円の中心に */
-      width: 70%; /* 円の幅の70% */
+      width: 50%; /* 円の幅の50% */
       aspect-ratio: 1; /* 縦横比を1:1に設定 */
       background-color: #b0c4de; /* フラッシュの色を変更 */
       opacity: 0; /* 初期は透明 */
@@ -171,11 +171,11 @@
     // フラッシュを表示する関数
     function showFlash() {
       flash.style.left = '50%'; // フラッシュの位置を円の中心に設定
-      flash.style.top = '50%'; // フラッシュの位置を円の中心に設定
+      flash.style.top = '52.5%'; // フラッシュの位置を円の中心に設定
       flash.classList.add('show'); // フラッシュの表示を開始
       setTimeout(() => {
         flash.classList.remove('show'); // 一定時間後にフラッシュの表示を終了
-      }, 300);
+      }, 120);
     }
 
     // メトロノームを開始する関数
