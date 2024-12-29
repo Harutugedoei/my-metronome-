@@ -24,6 +24,19 @@
       gap: 10px;
       margin-bottom: 20px;
       justify-content: center; /* 中央に配置 */
+      width: 90%; /* 親要素の幅に合わせる */
+      max-width: 600px; /* 最大幅を設定 */
+    }
+    .controls label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%; /* 入力ボックスが親要素の幅に応じて収まるようにする */
+      max-width: 150px; /* ラベルごとの最大幅を設定 */
+    }
+    .controls input, .controls select {
+      width: 100%; /* 入力ボックスが親要素の幅に応じるようにする */
+      box-sizing: border-box; /* パディングを含めた幅を計算 */
     }
     .circle-container {
       display: flex;
