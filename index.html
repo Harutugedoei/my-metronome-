@@ -341,6 +341,612 @@
   </details>
 
   <!-- タップ判定モード -->
+  <details open>
+    <summary>Rhythm TAP(タップ判定)</summary>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
+      <div id="tapPad">Rhythm TAP<small>メトロノームに合わせてタップ(スペースキー可)</small></div>
+      <div id="lastJudge"></div>
+      <div class="stats">
+        <div class="stat"><div class="val" id="stTaps">0</div><div class="lbl">タップ数</div></div>
+        <div class="stat"><div class="val" id="stAvg">—</div><div class="lbl">平均ズレ</div></div>
+        <div class="stat"><div class="val" id="stEarly">0</div><div class="lbl">走り(早い)</div></div>
+        <div class="stat"><div class="val" id="stLate">0</div><div class="lbl">もたり(遅い)</div></div>
+      </div>
+      <div class="legend">判定:
+        <span style="background:var(--good)"></span>±30ms
+        <span style="background:var(--ok)"></span>±70ms
+        <span style="background:var(--bad)"></span>それ以上
+        <button id="resetStats" style="margin-left:10px;border:none;background:var(--line);color:#fff;border-radius:8px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer">リセット</button>
+      </div>
+    </div>
+  </details>
+
+  <!-- 練習モード:テンポ漸増/漸減 -->
+  <details>
+    <summary>練習モード(テンポ漸増・漸減)</summary>
+    <div class="row" style="margin-top:8px">
+      <label class="field">モード
+        <select id="rampMode">
+          <option value="off">通常</option>
+          <option value="up">漸増</option>
+          <option value="down">漸減</option>
+        </select>
+      </label>
+      <label class="field">目標BPM
+        <input type="number" id="rampTarget" value="120" min="30" max="250">
+      </label>
+      <label class="field">小節ごと±
+        <input type="number" id="rampStep" value="2" min="1" max="20">
+      </label>
+    </div>
+    <div class="ramp-status" id="rampStatus"></div>
+  </details>
+</div>
+
+<script>
+// ====== 要素 ======
+const $ = id => document.getElementById(id);
+const bpmVal = $('bpmVal'), bpmSlider = $('bpmSlider');
+const beatsSel = $('beats'), soundSel = $('sound'), accentSel = $('accent'), volumeInput = $('volume');
+const startStopBtn = $('startStop'), tapTempoBtn = $('tapTempo');
+const dot = $('dot'), flash = $('flash'), beatNumber = $('beatNumber'), circleWrap = $('circleWrap');
+const tapPad = $('tapPad'), lastJudge = $('lastJudge');
+const stTaps = $('stTaps'), stAvg = $('stAvg'), stEarly = $('stEarly'), stLate = $('stLate');
+
+// ====== 状態 ======
+let audioCtx = null;
+let isRunning = false;
+let bpm = 80;
+let schedulerTimer = null;
+let rafId = null;
+let nextNoteTime = 0;        // 次の拍の予定時刻(audioCtx基準)
+let beatInMeasure = 0;       // 0始まり
+let scheduledBeats = [];     // {time, num} 直近の拍(描画・判定用)
+let measureCount = 0;
+
+// タップ判定
+let taps = [];               // 偏差ms の配列
+let tapMarkers = [];
+
+// タップテンポ
+let tapTimes = [];
+
+const LOOKAHEAD_MS = 25;
+const SCHEDULE_AHEAD = 0.12; // 秒
+
+// ====== BPM操作 ======
+function setBpm(v) {
+  bpm = Math.min(250, Math.max(30, Math.round(v)));
+  bpmVal.textContent = bpm;
+  bpmSlider.value = bpm;
+}
+bpmSlider.addEventListener('input', () => setBpm(+bpmSlider.value));
+$('bpmUp').addEventListener('click', () => setBpm(bpm + 1));
+$('bpmDown').addEventListener('click', () => setBpm(bpm - 1));
+
+// ====== オーディオ ======
+function ensureAudio() {
+  // iOSのサイレントスイッチ(マナーモード)でもWeb Audioを再生する(iOS 17+)
+  if (navigator.audioSession) {
+    try { navigator.audioSession.type = 'playback'; } catch (e) {}
+  }
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+// 「実際に音が聞こえる時刻」基準の現在時刻
+// currentTime(予約タイムライン)から出力レイテンシと手動補正を引く
+function audioNow() {
+  const auto = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
+  const manual = (+$('visOffset').value || 0) / 1000;
+  return audioCtx.currentTime - auto - manual;
+}
+function scheduleClick(time, freq, vol) {
+  if (vol <= 0) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, time);
+  gain.gain.setValueAtTime(Math.max(0.001, vol), time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(time); osc.stop(time + 0.09);
+}
+
+// ====== ノート・ミキシング ======
+// 各レイヤー: [1拍内の分割位置(0〜1の配列), 周波数倍率]
+function getMix() {
+  return {
+    n4:  +$('mix4').value / 100,
+    n8:  +$('mix8').value / 100,
+    n16: +$('mix16').value / 100,
+    n3:  +$('mix3').value / 100,
+  };
+}
+const LAYERS = [
+  { key: 'n4',  offsets: [0],                    freqRatio: 1.0  },
+  { key: 'n8',  offsets: [0, 1/2],               freqRatio: 0.75 },
+  { key: 'n16', offsets: [0, 1/4, 1/2, 3/4],     freqRatio: 0.6  },
+  { key: 'n3',  offsets: [0, 1/3, 2/3],          freqRatio: 0.5  },
+];
+function scheduleBeat(time, spb) {
+  const mix = getMix();
+  const base = +soundSel.value;
+  const master = volumeInput.value / 100;
+  for (const layer of LAYERS) {
+    const vol = master * mix[layer.key];
+    if (vol <= 0) continue;
+    for (const off of layer.offsets) {
+      scheduleClick(time + off * spb, base * layer.freqRatio, vol);
+    }
+  }
+}
+
+// 円周上の分割マーク表示(有効レイヤーの音価を可視化)
+const SUB_MARK_DEFS = [
+  { id: 'mix8',  degs: [180],            color: 'var(--n8)'  },
+  { id: 'mix16', degs: [90, 180, 270],   color: 'var(--n16)' },
+  { id: 'mix3',  degs: [120, 240],       color: 'var(--n3)'  },
+];
+let subMarkEls = [];
+function updateSubMarks() {
+  subMarkEls.forEach(el => el.remove());
+  subMarkEls = [];
+  const r = circleWrap.offsetWidth / 2;
+  for (const def of SUB_MARK_DEFS) {
+    if (+$(def.id).value <= 0) continue;
+    for (const deg of def.degs) {
+      const m = document.createElement('div');
+      m.className = 'sub-mark';
+      m.style.background = def.color;
+      m.style.transform =
+        `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+      circleWrap.appendChild(m);
+      subMarkEls.push(m);
+    }
+  }
+}
+document.querySelectorAll('.mix').forEach(sl => {
+  sl.addEventListener('input', () => {
+    $('pct' + sl.id.replace('mix', '')).textContent = sl.value;
+    updateSubMarks();
+  });
+});
+
+// ====== スケジューラ ======
+function getAccents() {
+  return accentSel.value ? accentSel.value.split(',').map(Number) : [];
+}
+function scheduler() {
+  const beats = +beatsSel.value;
+  while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
+    const spb = 60 / bpm;
+    const beatNum = (beatInMeasure % beats) + 1;
+    scheduleBeat(nextNoteTime, spb);
+    scheduledBeats.push({ time: nextNoteTime, num: beatNum });
+    if (scheduledBeats.length > 12) scheduledBeats.shift();
+
+    // 小節頭で練習モードのテンポ更新
+    if (beatNum === 1 && beatInMeasure > 0) {
+      measureCount++;
+      applyRamp();
+    }
+    nextNoteTime += 60 / bpm;
+    beatInMeasure++;
+  }
+}
+
+// ====== 練習モード(漸増/漸減) ======
+function applyRamp() {
+  const mode = $('rampMode').value;
+  if (mode === 'off') { $('rampStatus').textContent = ''; return; }
+  const target = Math.min(250, Math.max(30, +$('rampTarget').value || bpm));
+  const step = Math.max(1, +$('rampStep').value || 1);
+  if (mode === 'up' && bpm < target) setBpm(Math.min(target, bpm + step));
+  if (mode === 'down' && bpm > target) setBpm(Math.max(target, bpm - step));
+  const done = (mode === 'up' && bpm >= target) || (mode === 'down' && bpm <= target);
+  $('rampStatus').textContent = done
+    ? `目標 ${target} BPM 到達! 🎉(${measureCount}小節)`
+    : `小節 ${measureCount}:現在 ${bpm} → 目標 ${target} BPM`;
+}
+
+// ====== 描画(1周 = 1拍) ======
+let lastShownBeat = null;
+function draw() {
+  const now = audioNow();
+  const spb = 60 / bpm;
+  // 現在進行中の拍(time <= now の最新)を探す
+  let cur = null;
+  for (let i = scheduledBeats.length - 1; i >= 0; i--) {
+    if (scheduledBeats[i].time <= now) { cur = scheduledBeats[i]; break; }
+  }
+  if (cur) {
+    const progress = Math.min(1, (now - cur.time) / spb);
+    const deg = progress * 360;
+    const r = circleWrap.offsetWidth / 2;
+    dot.style.transform =
+      `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+    if (cur.num !== lastShownBeat) {
+      lastShownBeat = cur.num;
+      beatNumber.textContent = cur.num;
+      if (getAccents().includes(cur.num)) {
+        flash.classList.add('show');
+        setTimeout(() => flash.classList.remove('show'), 120);
+      }
+    }
+  }
+  rafId = requestAnimationFrame(draw);
+}
+
+// ====== 開始/停止 ======
+function start() {
+  ensureAudio();
+  isRunning = true;
+  beatInMeasure = 0;
+  measureCount = 0;
+  scheduledBeats = [];
+  lastShownBeat = null;
+  nextNoteTime = audioCtx.currentTime + 0.1;
+  scheduler();
+  schedulerTimer = setInterval(scheduler, LOOKAHEAD_MS);
+  rafId = requestAnimationFrame(draw);
+  startStopBtn.textContent = '停止';
+  startStopBtn.classList.add('running');
+}
+function stop() {
+  isRunning = false;
+  clearInterval(schedulerTimer);
+  cancelAnimationFrame(rafId);
+  startStopBtn.textContent = '開始';
+  startStopBtn.classList.remove('running');
+  beatNumber.textContent = '1';
+  resetDotPosition();
+  $('rampStatus').textContent = '';
+}
+startStopBtn.addEventListener('click', () => isRunning ? stop() : start());
+
+// 初期位置(12時)— loadイベント待ちだと環境により発火済みで実行されないため即時実行
+function resetDotPosition() {
+  const r = circleWrap.offsetWidth / 2;
+  dot.style.transform = `translate(-50%,-50%) rotate(-90deg) translate(${r}px) rotate(90deg)`;
+}
+resetDotPosition();
+updateSubMarks();
+window.addEventListener('resize', () => {
+  if (!isRunning) resetDotPosition();
+  updateSubMarks();
+});
+
+// ====== タップテンポ ======
+tapTempoBtn.addEventListener('click', () => {
+  const now = performance.now();
+  tapTimes.push(now);
+  tapTimes = tapTimes.filter(t => now - t < 3000).slice(-5);
+  if (tapTimes.length > 1) {
+    const iv = [];
+    for (let i = 1; i < tapTimes.length; i++) iv.push(tapTimes[i] - tapTimes[i-1]);
+    setBpm(60000 / (iv.reduce((a,b)=>a+b,0) / iv.length));
+  }
+});
+
+// ====== タップ判定 ======
+function judgeTap() {
+  if (!isRunning || !audioCtx) {
+    lastJudge.textContent = 'メトロノームを開始してください';
+    lastJudge.style.color = 'var(--text)';
+    return;
+  }
+  const t = audioNow();
+  const spb = 60 / bpm;
+  // 最も近い拍(過去・未来両方)との偏差
+  let best = null;
+  for (const b of scheduledBeats) {
+    const d = (t - b.time) * 1000; // +なら遅い, −なら早い
+    if (best === null || Math.abs(d) < Math.abs(best)) best = d;
+  }
+  if (best === null) return;
+  const dev = Math.round(best);
+  taps.push(dev);
+
+  // 判定色
+  const a = Math.abs(dev);
+  const color = a <= 30 ? 'var(--good)' : a <= 70 ? 'var(--ok)' : 'var(--bad)';
+  const label = a <= 30 ? 'GOOD!' : (dev < 0 ? '走り' : 'もたり');
+  lastJudge.textContent = `${label} ${dev > 0 ? '+' : ''}${dev}ms`;
+  lastJudge.style.color = color;
+
+  // 円周上にマーカー(偏差→角度: 1拍=360°)
+  const frac = best / (spb * 1000);
+  const deg = frac * 360;
+  const r = circleWrap.offsetWidth / 2;
+  const m = document.createElement('div');
+  m.className = 'tap-marker';
+  m.style.background = color;
+  m.style.transform =
+    `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+  circleWrap.appendChild(m);
+  tapMarkers.push(m);
+  if (tapMarkers.length > 12) tapMarkers.shift().remove();
+  setTimeout(() => { m.style.opacity = '0.25'; }, 1200);
+
+  updateStats();
+}
+function updateStats() {
+  stTaps.textContent = taps.length;
+  if (taps.length) {
+    const avg = taps.reduce((a,b)=>a+b,0) / taps.length;
+    stAvg.textContent = `${avg > 0 ? '+' : ''}${Math.round(avg)}ms`;
+    stEarly.textContent = taps.filter(d => d < -30).length;
+    stLate.textContent = taps.filter(d => d > 30).length;
+  } else {
+    stAvg.textContent = '—'; stEarly.textContent = 0; stLate.textContent = 0;
+  }
+}
+tapPad.addEventListener('pointerdown', e => { e.preventDefault(); judgeTap(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
+    e.preventDefault(); judgeTap();
+  }
+});
+$('resetStats').addEventListener('click', () => {
+  taps = [];
+  tapMarkers.forEach(m => m.remove());
+  tapMarkers = [];
+  lastJudge.textContent = '';
+  updateStats();
+});
+</script>
+</body>
+</html>
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(56px, 18vmin, 110px);
+    font-weight: 700;
+    color: var(--line);
+    z-index: 3;
+    pointer-events: none;
+  }
+  .tap-marker {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    z-index: 5;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  /* ===== コントロール ===== */
+  .panel {
+    width: 100%;
+    background: rgba(255,255,255,0.35);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  label.field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 70px;
+    flex: 1;
+  }
+  input[type=number], select {
+    width: 100%;
+    font-size: 16px;
+    padding: 7px 8px;
+    border: 1.5px solid var(--line);
+    border-radius: 8px;
+    background: #fffef8;
+    color: #555;
+  }
+  input[type=range] { width: 100%; accent-color: var(--dot); }
+
+  .bpm-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    justify-content: center;
+  }
+  .bpm-display {
+    font-size: 34px;
+    font-weight: 700;
+    min-width: 88px;
+    text-align: center;
+    color: #6b7b5a;
+  }
+  .bpm-display small { font-size: 12px; display: block; font-weight: 600; }
+  .step-btn {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: var(--line);
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .step-btn:active { transform: scale(0.93); }
+
+  button.main {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 0;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    flex: 1;
+    min-width: 90px;
+    color: #fff;
+    transition: transform 0.06s;
+  }
+  button.main:active { transform: scale(0.97); }
+  #startStop { background: var(--dot); }
+  #startStop.running { background: var(--bad); }
+  #tapTempo { background: var(--line); }
+
+  /* ===== ノート・ミキシング ===== */
+  .mix-row {
+    display: grid;
+    grid-template-columns: 64px 1fr 36px;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .mix-row .note-label { display: flex; align-items: center; gap: 5px; }
+  .mix-row .swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .mix-row .pct { text-align: right; font-variant-numeric: tabular-nums; color: #6b7b5a; }
+
+  /* ===== タップ判定 ===== */
+  #tapPad {
+    width: 100%;
+    padding: 20px 0;
+    border: 2.5px dashed var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.25);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+  }
+  #tapPad:active { background: rgba(255,255,255,0.6); }
+  #tapPad small { display: block; font-size: 11px; font-weight: 500; margin-top: 4px; }
+  .stats {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  .stat {
+    flex: 1;
+    background: rgba(255,255,255,0.4);
+    border-radius: 10px;
+    padding: 8px 4px;
+    text-align: center;
+  }
+  .stat .val { font-size: 18px; font-weight: 700; color: #6b7b5a; }
+  .stat .lbl { font-size: 10px; font-weight: 600; }
+  #lastJudge {
+    font-size: 15px;
+    font-weight: 700;
+    min-height: 22px;
+    text-align: center;
+  }
+  .legend { font-size: 11px; text-align: center; opacity: 0.85; }
+  .legend span { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 2px 0 8px; vertical-align: middle; }
+
+  /* ===== 練習モード ===== */
+  details {
+    width: 100%;
+    background: rgba(255,255,255,0.35);
+    border-radius: 14px;
+    padding: 10px 12px;
+  }
+  summary { font-size: 13px; font-weight: 700; cursor: pointer; }
+  .ramp-status { font-size: 12px; text-align: center; margin-top: 6px; min-height: 16px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>● 円形メトロノーム</h1>
+
+  <!-- 円形ビジュアライザー(1周 = 1拍) -->
+  <div class="circle-wrap" id="circleWrap">
+    <div class="flash" id="flash"></div>
+    <div class="circle"></div>
+    <div class="zero-mark"></div>
+    <div class="beat-number" id="beatNumber">1</div>
+    <div class="dot" id="dot"></div>
+  </div>
+
+  <!-- BPM -->
+  <div class="bpm-row">
+    <button class="step-btn" id="bpmDown">−</button>
+    <div class="bpm-display"><span id="bpmVal">80</span><small>BPM</small></div>
+    <button class="step-btn" id="bpmUp">＋</button>
+  </div>
+  <input type="range" id="bpmSlider" min="30" max="250" value="80" style="width:90%">
+
+  <!-- 開始/停止・タップテンポ -->
+  <div class="row" style="width:100%">
+    <button class="main" id="startStop">開始</button>
+    <button class="main" id="tapTempo">タップテンポ</button>
+  </div>
+
+  <!-- 設定 -->
+  <div class="panel">
+    <div class="row">
+      <label class="field">拍子
+        <select id="beats">
+          <option>1</option><option>2</option><option>3</option>
+          <option selected>4</option><option>5</option><option>6</option><option>7</option>
+        </select>
+      </label>
+      <label class="field">音
+        <select id="sound">
+          <option value="880">Click 1</option>
+          <option value="660">Click 2</option>
+          <option value="440">Click 3</option>
+        </select>
+      </label>
+      <label class="field">アクセント
+        <select id="accent">
+          <option value="">なし</option>
+          <option value="1" selected>1</option>
+          <option value="1,3">1 & 3</option>
+          <option value="2,4">2 & 4</option>
+        </select>
+      </label>
+      <label class="field">音量
+        <input type="range" id="volume" min="0" max="100" value="50">
+      </label>
+      <label class="field">表示補正(ms)
+        <input type="number" id="visOffset" value="0" min="-300" max="300" step="5">
+      </label>
+    </div>
+  </div>
+
+  <!-- ノート・ミキシング -->
+  <details open>
+    <summary>ノート・ミキシング</summary>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--text)"></span>4分音符</span>
+        <input type="range" class="mix" id="mix4" min="0" max="100" value="100">
+        <span class="pct" id="pct4">100</span>
+      </div>
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--n8)"></span>8分音符</span>
+        <input type="range" class="mix" id="mix8" min="0" max="100" value="0">
+        <span class="pct" id="pct8">0</span>
+      </div>
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--n16)"></span>16分音符</span>
+        <input type="range" class="mix" id="mix16" min="0" max="100" value="0">
+        <span class="pct" id="pct16">0</span>
+      </div>
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--n3)"></span>3連符</span>
+        <input type="range" class="mix" id="mix3" min="0" max="100" value="0">
+        <span class="pct" id="pct3">0</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- タップ判定モード -->
   <div class="panel">
     <div id="tapPad">Rhythm TAP<small>メトロノームに合わせてタップ(スペースキー可)</small></div>
     <div id="lastJudge"></div>
