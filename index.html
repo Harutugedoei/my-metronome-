@@ -14,6 +14,9 @@
     --good: #4CAF50;
     --ok: #FF9800;
     --bad: #E53935;
+    --n8: #6A5ACD;
+    --n16: #2E86AB;
+    --n3: #E07A5F;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -68,6 +71,15 @@
     transform: translateX(-50%);
     border-radius: 2px;
     z-index: 3;
+  }
+  /* ノート・ミキシングの分割マーク */
+  .sub-mark {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    z-index: 3;
+    pointer-events: none;
   }
   .dot {
     position: absolute;
@@ -178,6 +190,20 @@
   #startStop.running { background: var(--bad); }
   #tapTempo { background: var(--line); }
 
+  /* ===== ノート・ミキシング ===== */
+  .mix-row {
+    display: grid;
+    grid-template-columns: 64px 1fr 36px;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .mix-row .note-label { display: flex; align-items: center; gap: 5px; }
+  .mix-row .swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .mix-row .pct { text-align: right; font-variant-numeric: tabular-nums; color: #6b7b5a; }
+
   /* ===== タップ判定 ===== */
   #tapPad {
     width: 100%;
@@ -281,8 +307,38 @@
       <label class="field">音量
         <input type="range" id="volume" min="0" max="100" value="50">
       </label>
+      <label class="field">表示補正(ms)
+        <input type="number" id="visOffset" value="0" min="-300" max="300" step="5">
+      </label>
     </div>
   </div>
+
+  <!-- ノート・ミキシング -->
+  <details open>
+    <summary>ノート・ミキシング</summary>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--text)"></span>4分音符</span>
+        <input type="range" class="mix" id="mix4" min="0" max="100" value="100">
+        <span class="pct" id="pct4">100</span>
+      </div>
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--n8)"></span>8分音符</span>
+        <input type="range" class="mix" id="mix8" min="0" max="100" value="0">
+        <span class="pct" id="pct8">0</span>
+      </div>
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--n16)"></span>16分音符</span>
+        <input type="range" class="mix" id="mix16" min="0" max="100" value="0">
+        <span class="pct" id="pct16">0</span>
+      </div>
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--n3)"></span>3連符</span>
+        <input type="range" class="mix" id="mix3" min="0" max="100" value="0">
+        <span class="pct" id="pct3">0</span>
+      </div>
+    </div>
+  </details>
 
   <!-- タップ判定モード -->
   <div class="panel">
@@ -367,21 +423,91 @@ $('bpmDown').addEventListener('click', () => setBpm(bpm - 1));
 
 // ====== オーディオ ======
 function ensureAudio() {
+  // iOSのサイレントスイッチ(マナーモード)でもWeb Audioを再生する(iOS 17+)
+  if (navigator.audioSession) {
+    try { navigator.audioSession.type = 'playback'; } catch (e) {}
+  }
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
-function scheduleClick(time) {
-  const baseFreq = +soundSel.value;
+// 「実際に音が聞こえる時刻」基準の現在時刻
+// currentTime(予約タイムライン)から出力レイテンシと手動補正を引く
+function audioNow() {
+  const auto = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
+  const manual = (+$('visOffset').value || 0) / 1000;
+  return audioCtx.currentTime - auto - manual;
+}
+function scheduleClick(time, freq, vol) {
+  if (vol <= 0) return;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(baseFreq, time);
-  const vol = volumeInput.value / 100;
+  osc.frequency.setValueAtTime(freq, time);
   gain.gain.setValueAtTime(Math.max(0.001, vol), time);
   gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
   osc.connect(gain); gain.connect(audioCtx.destination);
   osc.start(time); osc.stop(time + 0.09);
 }
+
+// ====== ノート・ミキシング ======
+// 各レイヤー: [1拍内の分割位置(0〜1の配列), 周波数倍率]
+function getMix() {
+  return {
+    n4:  +$('mix4').value / 100,
+    n8:  +$('mix8').value / 100,
+    n16: +$('mix16').value / 100,
+    n3:  +$('mix3').value / 100,
+  };
+}
+const LAYERS = [
+  { key: 'n4',  offsets: [0],                    freqRatio: 1.0  },
+  { key: 'n8',  offsets: [0, 1/2],               freqRatio: 0.75 },
+  { key: 'n16', offsets: [0, 1/4, 1/2, 3/4],     freqRatio: 0.6  },
+  { key: 'n3',  offsets: [0, 1/3, 2/3],          freqRatio: 0.5  },
+];
+function scheduleBeat(time, spb) {
+  const mix = getMix();
+  const base = +soundSel.value;
+  const master = volumeInput.value / 100;
+  for (const layer of LAYERS) {
+    const vol = master * mix[layer.key];
+    if (vol <= 0) continue;
+    for (const off of layer.offsets) {
+      scheduleClick(time + off * spb, base * layer.freqRatio, vol);
+    }
+  }
+}
+
+// 円周上の分割マーク表示(有効レイヤーの音価を可視化)
+const SUB_MARK_DEFS = [
+  { id: 'mix8',  degs: [180],            color: 'var(--n8)'  },
+  { id: 'mix16', degs: [90, 180, 270],   color: 'var(--n16)' },
+  { id: 'mix3',  degs: [120, 240],       color: 'var(--n3)'  },
+];
+let subMarkEls = [];
+function updateSubMarks() {
+  subMarkEls.forEach(el => el.remove());
+  subMarkEls = [];
+  const r = circleWrap.offsetWidth / 2;
+  for (const def of SUB_MARK_DEFS) {
+    if (+$(def.id).value <= 0) continue;
+    for (const deg of def.degs) {
+      const m = document.createElement('div');
+      m.className = 'sub-mark';
+      m.style.background = def.color;
+      m.style.transform =
+        `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+      circleWrap.appendChild(m);
+      subMarkEls.push(m);
+    }
+  }
+}
+document.querySelectorAll('.mix').forEach(sl => {
+  sl.addEventListener('input', () => {
+    $('pct' + sl.id.replace('mix', '')).textContent = sl.value;
+    updateSubMarks();
+  });
+});
 
 // ====== スケジューラ ======
 function getAccents() {
@@ -390,8 +516,9 @@ function getAccents() {
 function scheduler() {
   const beats = +beatsSel.value;
   while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
+    const spb = 60 / bpm;
     const beatNum = (beatInMeasure % beats) + 1;
-    scheduleClick(nextNoteTime);
+    scheduleBeat(nextNoteTime, spb);
     scheduledBeats.push({ time: nextNoteTime, num: beatNum });
     if (scheduledBeats.length > 12) scheduledBeats.shift();
 
@@ -422,7 +549,7 @@ function applyRamp() {
 // ====== 描画(1周 = 1拍) ======
 let lastShownBeat = null;
 function draw() {
-  const now = audioCtx.currentTime;
+  const now = audioNow();
   const spb = 60 / bpm;
   // 現在進行中の拍(time <= now の最新)を探す
   let cur = null;
@@ -469,16 +596,21 @@ function stop() {
   startStopBtn.textContent = '開始';
   startStopBtn.classList.remove('running');
   beatNumber.textContent = '1';
-  const r = circleWrap.offsetWidth / 2;
-  dot.style.transform = `translate(-50%,-50%) rotate(-90deg) translate(${r}px) rotate(90deg)`;
+  resetDotPosition();
   $('rampStatus').textContent = '';
 }
 startStopBtn.addEventListener('click', () => isRunning ? stop() : start());
 
-// 初期位置(12時)
-window.addEventListener('load', () => {
+// 初期位置(12時)— loadイベント待ちだと環境により発火済みで実行されないため即時実行
+function resetDotPosition() {
   const r = circleWrap.offsetWidth / 2;
   dot.style.transform = `translate(-50%,-50%) rotate(-90deg) translate(${r}px) rotate(90deg)`;
+}
+resetDotPosition();
+updateSubMarks();
+window.addEventListener('resize', () => {
+  if (!isRunning) resetDotPosition();
+  updateSubMarks();
 });
 
 // ====== タップテンポ ======
@@ -493,14 +625,14 @@ tapTempoBtn.addEventListener('click', () => {
   }
 });
 
-// ====== タップ判定(代替案A) ======
+// ====== タップ判定 ======
 function judgeTap() {
   if (!isRunning || !audioCtx) {
     lastJudge.textContent = 'メトロノームを開始してください';
     lastJudge.style.color = 'var(--text)';
     return;
   }
-  const t = audioCtx.currentTime;
+  const t = audioNow();
   const spb = 60 / bpm;
   // 最も近い拍(過去・未来両方)との偏差
   let best = null;
