@@ -1,325 +1,564 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>円形メトロノーム</title>
-  <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: #F2D27F; /* 背景色 */
-      font-family: Arial, sans-serif;
-      font-size: 2vw;
-      color: #A4B494; /* テキストの色 */
-    }
-    .container {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 80vh; /* ビューポートの高さの80% */
-      width: 80vw;  /* ビューポートの幅の80% */
-      background-color: #F2D27F; /* 背景色 */
-      overflow: hidden;
-      box-sizing: border-box;
-    }
-    .controls {
-      display: flex;
-      flex-wrap: wrap; /* 要素を折り返す */
-      gap: 1vw; /* ギャップをビューポート幅に基づいて設定 */
-      margin-bottom: 2vh; /* 下マージンをビューポート高さに基づいて設定 */
-      justify-content: center; /* 中央に配置 */
-      width: 90%; /* 親要素の幅をビューポート幅に基づいて設定 */
-      max-width: 60vw; /* 最大幅をビューポート幅に基づいて設定 */
-    }
-    .controls label {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%; /* 入力ボックスが親要素の幅に応じて収まるようにする */
-      max-width: 15vw; /* ラベルごとの最大幅をビューポート幅に基づいて設定 */
-    }
-    .controls input, .controls select {
-      width: 100%; /* 入力ボックスが親要素の幅に応じるようにする */
-      box-sizing: border-box; /* パディングを含めた幅を計算 */
-      font-size: 2vw; /* 入力ボックスのフォントサイズをビューポート幅に基づいて設定 */
-    }
-    .circle-container {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      width: 100%;
-      height: 100%;
-    }
-    .circle {
-      width: 80vmin; /* 縦横の短い辺の80% */
-      height: 80vmin; /* 縦横の短い辺の80% */
-      border: 0.5vmin solid #A4B494; /* 円の色 */
-      border-radius: 50%;
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 4vw;
-      font-weight: bold;
-    }
-    .circle .dot {
-      width: 5vmin; /* 画面の短い辺の5% */
-      height: 5vmin; /* 画面の短い辺の5% */
-      background-color: #6A5ACD; /* ドットの色 */
-      border-radius: 50%;
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%) rotate(0deg) translate(40vmin) rotate(0deg); /* 40vminはcircleの幅の半分 */
-    }
-    .flash {
-      position: absolute;
-      top: 50%; /* フラッシュを円の中心に */
-      left: 50%; /* フラッシュを円の中心に */
-      width: 80vmin; /* 縦横の短い辺の80% */
-      height: 80vmin; /* 縦横の短い辺の80% */
-      background-color: #b0c4de; /* フラッシュの色を変更 */
-      opacity: 0; /* 初期は透明 */
-      pointer-events: none;
-      transition: opacity 0.12s ease-in-out, transform 0.12s ease-in-out;
-      border-radius: 50%; /* 円形にする */
-      transform: translate(-50%, -50%);
-      z-index: 1; /* フラッシュを最前面に */
-    }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>円形メトロノーム</title>
+<style>
+  :root {
+    --bg: #F2D27F;
+    --text: #7A8A6A;
+    --line: #A4B494;
+    --dot: #6A5ACD;
+    --flash: #b0c4de;
+    --good: #4CAF50;
+    --ok: #FF9800;
+    --bad: #E53935;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    min-height: 100%;
+    background: var(--bg);
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    -webkit-user-select: none; user-select: none;
+    touch-action: manipulation;
+  }
+  .app {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 12px 14px 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+  h1 { font-size: 15px; letter-spacing: 0.15em; margin: 4px 0 0; font-weight: 600; }
 
-    .flash.show {
-      transform: translate(-50%, -50%) scale(1); /* フラッシュのサイズをそのままにする */
-      opacity: 1;
-      background-color: #b0c4de; /* フラッシュの色を変更 */
-      transition: opacity 0.12s ease-in-out, transform 0.12s ease-in-out;
-    }
-    .beat-number {
-      position: absolute;
-      z-index: 2; /* 拍子の数字をフラッシュの上に表示 */
-      color: #A4B494;
-      font-size: 8vw; /* ビューポート幅に基づいてフォントサイズを設定 */
-    }
-    @media (min-width: 768px) {
-      .container {
-        font-size: 1.5vw; /* 大きな画面ではフォントサイズを少し小さく調整 */
-      }
-      .circle {
-        width: 40vmin;
-        height: 40vmin;
-      }
-      .circle .dot {
-        width: 5vmin;
-        height: 5vmin;
-        transform: translate(-50%, -50%) rotate(0deg) translate(20vmin) rotate(0deg);
-      }
-      .flash {
-        width: 40vmin; /* 縦横の短い辺の40% */
-        height: 40vmin; /* 縦横の短い辺の40% */
-        left: 50%; /* 中央に配置 */
-      }
-      .beat-number {
-        font-size: 4vw; /* 大きな画面ではフォントサイズを調整 */
-      }
-    }
-  </style>
+  /* ===== 円形ビジュアライザー ===== */
+  .circle-wrap {
+    position: relative;
+    width: min(78vw, 64vmin, 360px);
+    height: min(78vw, 64vmin, 360px);
+    margin: 6px 0;
+  }
+  .flash {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    background: var(--flash);
+    opacity: 0;
+    transition: opacity 0.12s ease-in-out;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .flash.show { opacity: 0.85; }
+  .circle {
+    position: absolute; inset: 0;
+    border: 3px solid var(--line);
+    border-radius: 50%;
+    z-index: 2;
+  }
+  /* 拍頭マーク(12時位置) */
+  .zero-mark {
+    position: absolute;
+    top: -7px; left: 50%;
+    width: 4px; height: 16px;
+    background: var(--text);
+    transform: translateX(-50%);
+    border-radius: 2px;
+    z-index: 3;
+  }
+  .dot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 24px; height: 24px;
+    background: var(--dot);
+    border-radius: 50%;
+    z-index: 4;
+    box-shadow: 0 0 8px rgba(106,90,205,0.5);
+  }
+  .beat-number {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(56px, 18vmin, 110px);
+    font-weight: 700;
+    color: var(--line);
+    z-index: 3;
+    pointer-events: none;
+  }
+  .tap-marker {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    z-index: 5;
+    opacity: 0.9;
+    pointer-events: none;
+  }
+
+  /* ===== コントロール ===== */
+  .panel {
+    width: 100%;
+    background: rgba(255,255,255,0.35);
+    border-radius: 14px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    justify-content: center;
+  }
+  label.field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    min-width: 70px;
+    flex: 1;
+  }
+  input[type=number], select {
+    width: 100%;
+    font-size: 16px;
+    padding: 7px 8px;
+    border: 1.5px solid var(--line);
+    border-radius: 8px;
+    background: #fffef8;
+    color: #555;
+  }
+  input[type=range] { width: 100%; accent-color: var(--dot); }
+
+  .bpm-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    justify-content: center;
+  }
+  .bpm-display {
+    font-size: 34px;
+    font-weight: 700;
+    min-width: 88px;
+    text-align: center;
+    color: #6b7b5a;
+  }
+  .bpm-display small { font-size: 12px; display: block; font-weight: 600; }
+  .step-btn {
+    width: 42px; height: 42px;
+    border-radius: 50%;
+    border: none;
+    background: var(--line);
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .step-btn:active { transform: scale(0.93); }
+
+  button.main {
+    border: none;
+    border-radius: 10px;
+    padding: 12px 0;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    flex: 1;
+    min-width: 90px;
+    color: #fff;
+    transition: transform 0.06s;
+  }
+  button.main:active { transform: scale(0.97); }
+  #startStop { background: var(--dot); }
+  #startStop.running { background: var(--bad); }
+  #tapTempo { background: var(--line); }
+
+  /* ===== タップ判定 ===== */
+  #tapPad {
+    width: 100%;
+    padding: 20px 0;
+    border: 2.5px dashed var(--line);
+    border-radius: 14px;
+    background: rgba(255,255,255,0.25);
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+    cursor: pointer;
+    text-align: center;
+  }
+  #tapPad:active { background: rgba(255,255,255,0.6); }
+  #tapPad small { display: block; font-size: 11px; font-weight: 500; margin-top: 4px; }
+  .stats {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+  }
+  .stat {
+    flex: 1;
+    background: rgba(255,255,255,0.4);
+    border-radius: 10px;
+    padding: 8px 4px;
+    text-align: center;
+  }
+  .stat .val { font-size: 18px; font-weight: 700; color: #6b7b5a; }
+  .stat .lbl { font-size: 10px; font-weight: 600; }
+  #lastJudge {
+    font-size: 15px;
+    font-weight: 700;
+    min-height: 22px;
+    text-align: center;
+  }
+  .legend { font-size: 11px; text-align: center; opacity: 0.85; }
+  .legend span { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 2px 0 8px; vertical-align: middle; }
+
+  /* ===== 練習モード ===== */
+  details {
+    width: 100%;
+    background: rgba(255,255,255,0.35);
+    border-radius: 14px;
+    padding: 10px 12px;
+  }
+  summary { font-size: 13px; font-weight: 700; cursor: pointer; }
+  .ramp-status { font-size: 12px; text-align: center; margin-top: 6px; min-height: 16px; }
+</style>
 </head>
 <body>
-  <div class="container">
-    <div class="controls">
-      <label>BPM: <input type="number" id="bpm" value="80" min="30" max="250"></label>
-      <label>拍子: <input type="number" id="beats" value="4" min="1" max="7"></label>
-      <label>音: 
-        <select id="sound">
-          <option value="click1">Click 1</option>
-          <option value="click2">Click 2</option>
-          <option value="click3">Click 3</option>
+<div class="app">
+  <h1>● 円形メトロノーム</h1>
+
+  <!-- 円形ビジュアライザー(1周 = 1拍) -->
+  <div class="circle-wrap" id="circleWrap">
+    <div class="flash" id="flash"></div>
+    <div class="circle"></div>
+    <div class="zero-mark"></div>
+    <div class="beat-number" id="beatNumber">1</div>
+    <div class="dot" id="dot"></div>
+  </div>
+
+  <!-- BPM -->
+  <div class="bpm-row">
+    <button class="step-btn" id="bpmDown">−</button>
+    <div class="bpm-display"><span id="bpmVal">80</span><small>BPM</small></div>
+    <button class="step-btn" id="bpmUp">＋</button>
+  </div>
+  <input type="range" id="bpmSlider" min="30" max="250" value="80" style="width:90%">
+
+  <!-- 開始/停止・タップテンポ -->
+  <div class="row" style="width:100%">
+    <button class="main" id="startStop">開始</button>
+    <button class="main" id="tapTempo">タップテンポ</button>
+  </div>
+
+  <!-- 設定 -->
+  <div class="panel">
+    <div class="row">
+      <label class="field">拍子
+        <select id="beats">
+          <option>1</option><option>2</option><option>3</option>
+          <option selected>4</option><option>5</option><option>6</option><option>7</option>
         </select>
       </label>
-      <label>アクセント:
+      <label class="field">音
+        <select id="sound">
+          <option value="880">Click 1</option>
+          <option value="660">Click 2</option>
+          <option value="440">Click 3</option>
+        </select>
+      </label>
+      <label class="field">アクセント
         <select id="accent">
-          <option value="0">None</option>
-          <option value="1">1</option>
+          <option value="">なし</option>
+          <option value="1" selected>1</option>
           <option value="1,3">1 & 3</option>
           <option value="2,4">2 & 4</option>
         </select>
       </label>
-      <label>音量: <input type="range" id="volume" min="0" max="100" value="50"></label> <!-- 音量スライダーを追加 -->
-      <button id="start">開始</button>
-      <button id="stop">停止</button>
-      <button id="tap-tempo">タップテンポ</button> <!-- タップテンポボタンを追加 -->
-    </div>
-    <div class="circle-container">
-      <div class="circle">
-        <div class="dot"></div>
-        <div class="beat-number">1</div>
-      </div>
-      <div class="flash"></div>
+      <label class="field">音量
+        <input type="range" id="volume" min="0" max="100" value="50">
+      </label>
     </div>
   </div>
 
-  <script>
-    // 各要素を取得
-    const bpmInput = document.getElementById('bpm');
-    const beatsInput = document.getElementById('beats');
-    const soundSelect = document.getElementById('sound');
-    const accentSelect = document.getElementById('accent');
-    const volumeInput = document.getElementById('volume'); // 音量スライダーを取得
-    const startButton = document.getElementById('start');
-    const stopButton = document.getElementById('stop');
-    const tapTempoButton = document.getElementById('tap-tempo'); // タップテンポボタンを取得
-    const dot = document.querySelector('.dot');
-    const flash = document.querySelector('.flash');
-    const beatNumber = document.querySelector('.beat-number');
+  <!-- タップ判定モード -->
+  <div class="panel">
+    <div id="tapPad">Rhythm TAP<small>メトロノームに合わせてタップ(スペースキー可)</small></div>
+    <div id="lastJudge"></div>
+    <div class="stats">
+      <div class="stat"><div class="val" id="stTaps">0</div><div class="lbl">タップ数</div></div>
+      <div class="stat"><div class="val" id="stAvg">—</div><div class="lbl">平均ズレ</div></div>
+      <div class="stat"><div class="val" id="stEarly">0</div><div class="lbl">走り(早い)</div></div>
+      <div class="stat"><div class="val" id="stLate">0</div><div class="lbl">もたり(遅い)</div></div>
+    </div>
+    <div class="legend">判定:
+      <span style="background:var(--good)"></span>±30ms
+      <span style="background:var(--ok)"></span>±70ms
+      <span style="background:var(--bad)"></span>それ以上
+      <button id="resetStats" style="margin-left:10px;border:none;background:var(--line);color:#fff;border-radius:8px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer">リセット</button>
+    </div>
+  </div>
 
-    // 変数の初期化
-    let intervalId;
-    let currentBeat = 0;
-    let startTime;
+  <!-- 練習モード:テンポ漸増/漸減 -->
+  <details>
+    <summary>練習モード(テンポ漸増・漸減)</summary>
+    <div class="row" style="margin-top:8px">
+      <label class="field">モード
+        <select id="rampMode">
+          <option value="off">通常</option>
+          <option value="up">漸増</option>
+          <option value="down">漸減</option>
+        </select>
+      </label>
+      <label class="field">目標BPM
+        <input type="number" id="rampTarget" value="120" min="30" max="250">
+      </label>
+      <label class="field">小節ごと±
+        <input type="number" id="rampStep" value="2" min="1" max="20">
+      </label>
+    </div>
+    <div class="ramp-status" id="rampStatus"></div>
+  </details>
+</div>
 
-    // タップテンポ用の変数
-    let tapTimes = [];
+<script>
+// ====== 要素 ======
+const $ = id => document.getElementById(id);
+const bpmVal = $('bpmVal'), bpmSlider = $('bpmSlider');
+const beatsSel = $('beats'), soundSel = $('sound'), accentSel = $('accent'), volumeInput = $('volume');
+const startStopBtn = $('startStop'), tapTempoBtn = $('tapTempo');
+const dot = $('dot'), flash = $('flash'), beatNumber = $('beatNumber'), circleWrap = $('circleWrap');
+const tapPad = $('tapPad'), lastJudge = $('lastJudge');
+const stTaps = $('stTaps'), stAvg = $('stAvg'), stEarly = $('stEarly'), stLate = $('stLate');
 
-    // 音声生成のためのオーディオコンテキストを作成
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+// ====== 状態 ======
+let audioCtx = null;
+let isRunning = false;
+let bpm = 80;
+let schedulerTimer = null;
+let rafId = null;
+let nextNoteTime = 0;        // 次の拍の予定時刻(audioCtx基準)
+let beatInMeasure = 0;       // 0始まり
+let scheduledBeats = [];     // {time, num} 直近の拍(描画・判定用)
+let measureCount = 0;
 
-    // 音を再生する関数
-    function playSound() {
-      const selectedSound = soundSelect.value;
-      let frequency = 440; // デフォルトの周波数
+// タップ判定
+let taps = [];               // 偏差ms の配列
+let tapMarkers = [];
 
-      // 選択された音に基づいて周波数を変更
-      if (selectedSound === 'click1') frequency = 440; // A4
-      if (selectedSound === 'click2') frequency = 660; // E5
-      if (selectedSound === 'click3') frequency = 880; // A5
+// タップテンポ
+let tapTimes = [];
 
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
+const LOOKAHEAD_MS = 25;
+const SCHEDULE_AHEAD = 0.12; // 秒
 
-      oscillator.type = 'sine'; // サウンド波形のタイプ
-      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+// ====== BPM操作 ======
+function setBpm(v) {
+  bpm = Math.min(250, Math.max(30, Math.round(v)));
+  bpmVal.textContent = bpm;
+  bpmSlider.value = bpm;
+}
+bpmSlider.addEventListener('input', () => setBpm(+bpmSlider.value));
+$('bpmUp').addEventListener('click', () => setBpm(bpm + 1));
+$('bpmDown').addEventListener('click', () => setBpm(bpm - 1));
 
-      const volume = volumeInput.value / 100; // 音量スライダーの値を取得し、0〜1の範囲に変換
-      gainNode.gain.setValueAtTime(volume, audioContext.currentTime); // 音量を設定
-      gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
+// ====== オーディオ ======
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function scheduleClick(time) {
+  const baseFreq = +soundSel.value;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(baseFreq, time);
+  const vol = volumeInput.value / 100;
+  gain.gain.setValueAtTime(Math.max(0.001, vol), time);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(time); osc.stop(time + 0.09);
+}
 
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+// ====== スケジューラ ======
+function getAccents() {
+  return accentSel.value ? accentSel.value.split(',').map(Number) : [];
+}
+function scheduler() {
+  const beats = +beatsSel.value;
+  while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
+    const beatNum = (beatInMeasure % beats) + 1;
+    scheduleClick(nextNoteTime);
+    scheduledBeats.push({ time: nextNoteTime, num: beatNum });
+    if (scheduledBeats.length > 12) scheduledBeats.shift();
 
-      oscillator.start();
-      oscillator.stop(audioContext.currentTime + 0.1);
+    // 小節頭で練習モードのテンポ更新
+    if (beatNum === 1 && beatInMeasure > 0) {
+      measureCount++;
+      applyRamp();
     }
+    nextNoteTime += 60 / bpm;
+    beatInMeasure++;
+  }
+}
 
-    // フラッシュを表示する関数
-    function showFlash() {
-      flash.style.left = '50%'; // フラッシュの位置を円の中心に設定
-      flash.style.top = '50%'; // フラッシュの位置を円の中心に設定
-      flash.classList.add('show'); // フラッシュの表示を開始
-      setTimeout(() => {
-        flash.classList.remove('show'); // 一定時間後にフラッシュの表示を終了
-      }, 120); // フラッシュの表示時間を0.12秒に変更
-    }
+// ====== 練習モード(漸増/漸減) ======
+function applyRamp() {
+  const mode = $('rampMode').value;
+  if (mode === 'off') { $('rampStatus').textContent = ''; return; }
+  const target = Math.min(250, Math.max(30, +$('rampTarget').value || bpm));
+  const step = Math.max(1, +$('rampStep').value || 1);
+  if (mode === 'up' && bpm < target) setBpm(Math.min(target, bpm + step));
+  if (mode === 'down' && bpm > target) setBpm(Math.max(target, bpm - step));
+  const done = (mode === 'up' && bpm >= target) || (mode === 'down' && bpm <= target);
+  $('rampStatus').textContent = done
+    ? `目標 ${target} BPM 到達! 🎉(${measureCount}小節)`
+    : `小節 ${measureCount}:現在 ${bpm} → 目標 ${target} BPM`;
+}
 
-    // メトロノームを開始する関数
-    function startMetronome() {
-      const bpm = parseInt(bpmInput.value);
-      const beats = parseInt(beatsInput.value);
-      const accent = accentSelect.value.split(',').map(Number); // 選択されたアクセントの拍子を配列で取得
-      const interval = (60 / bpm) * 1000; // 1拍の時間
-      const rotationDuration = 60000 / bpm; // 一周する時間（BPMに基づく）
-
-      currentBeat = 0;
-      startTime = performance.now();
-
-      if (intervalId) cancelAnimationFrame(intervalId);
-
-      // 初回の音を鳴らす
-      playSound();
-
-      // 初回のフラッシュを表示
-      const firstBeat = (currentBeat % beats) + 1;
-      if (accent.includes(firstBeat)) {
-        showFlash();
+// ====== 描画(1周 = 1拍) ======
+let lastShownBeat = null;
+function draw() {
+  const now = audioCtx.currentTime;
+  const spb = 60 / bpm;
+  // 現在進行中の拍(time <= now の最新)を探す
+  let cur = null;
+  for (let i = scheduledBeats.length - 1; i >= 0; i--) {
+    if (scheduledBeats[i].time <= now) { cur = scheduledBeats[i]; break; }
+  }
+  if (cur) {
+    const progress = Math.min(1, (now - cur.time) / spb);
+    const deg = progress * 360;
+    const r = circleWrap.offsetWidth / 2;
+    dot.style.transform =
+      `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+    if (cur.num !== lastShownBeat) {
+      lastShownBeat = cur.num;
+      beatNumber.textContent = cur.num;
+      if (getAccents().includes(cur.num)) {
+        flash.classList.add('show');
+        setTimeout(() => flash.classList.remove('show'), 120);
       }
-
-      function animate() {
-        const now = performance.now(); // 現在の時刻を取得
-        const elapsed = now - startTime; // 経過時間を計算
-        const progress = (elapsed % rotationDuration) / rotationDuration; // 一周の進行状況を計算
-        const rotation = progress * 360; // 進行状況を角度に変換
-
-        // ドットを回転させる
-        const radius = document.querySelector('.circle').offsetWidth / 2 - document.querySelector('.dot').offsetWidth / 2; // 半径を計算
-        dot.style.transform = `translate(-50%, -50%) rotate(${rotation}deg) translate(${radius}px) rotate(-${rotation}deg)`; // 半径を使用
-
-        // 進行状況に基づいて拍子を更新
-        const beatProgress = Math.floor(elapsed / interval); // 現在の拍子を計算
-
-        if (beatProgress !== currentBeat) { // 拍子が変わった場合
-          currentBeat = beatProgress;
-          const beat = (currentBeat % beats) + 1; // 拍子の数字を計算
-          beatNumber.textContent = beat; // 拍子の数字を更新
-
-          // フラッシュが光るタイミングの調整
-          if (accent.includes(beat)) {
-            showFlash();
-          }
-          playSound(); // 音を再生
-        }
-
-        intervalId = requestAnimationFrame(animate); // 次のフレームで再度実行
-      }
-
-      animate();
     }
+  }
+  rafId = requestAnimationFrame(draw);
+}
 
-    // メトロノームを停止する関数
-    function stopMetronome() {
-      if (intervalId) cancelAnimationFrame(intervalId); // アニメーションを停止
-      intervalId = null;
-      currentBeat = 0; // カウンターをリセット
-      beatNumber.textContent = "1"; // 拍子番号をリセット
-      const radius = document.querySelector('.circle').offsetWidth / 2 - document.querySelector('.dot').offsetWidth / 2; // 半径を計算
-      dot.style.transform = `translate(-50%, -50%) rotate(0deg) translate(${radius}px) rotate(0deg)`; // ドットの位置をリセット
-    }
+// ====== 開始/停止 ======
+function start() {
+  ensureAudio();
+  isRunning = true;
+  beatInMeasure = 0;
+  measureCount = 0;
+  scheduledBeats = [];
+  lastShownBeat = null;
+  nextNoteTime = audioCtx.currentTime + 0.1;
+  scheduler();
+  schedulerTimer = setInterval(scheduler, LOOKAHEAD_MS);
+  rafId = requestAnimationFrame(draw);
+  startStopBtn.textContent = '停止';
+  startStopBtn.classList.add('running');
+}
+function stop() {
+  isRunning = false;
+  clearInterval(schedulerTimer);
+  cancelAnimationFrame(rafId);
+  startStopBtn.textContent = '開始';
+  startStopBtn.classList.remove('running');
+  beatNumber.textContent = '1';
+  const r = circleWrap.offsetWidth / 2;
+  dot.style.transform = `translate(-50%,-50%) rotate(-90deg) translate(${r}px) rotate(90deg)`;
+  $('rampStatus').textContent = '';
+}
+startStopBtn.addEventListener('click', () => isRunning ? stop() : start());
 
-    // タップテンポを更新する関数
-    function updateTapTempo() {
-      const now = performance.now();
-      tapTimes.push(now);
+// 初期位置(12時)
+window.addEventListener('load', () => {
+  const r = circleWrap.offsetWidth / 2;
+  dot.style.transform = `translate(-50%,-50%) rotate(-90deg) translate(${r}px) rotate(90deg)`;
+});
 
-      // 過去5回のタップ間隔を計算
-      if (tapTimes.length > 5) {
-        tapTimes.shift(); // 最初のタップを削除
-      }
+// ====== タップテンポ ======
+tapTempoBtn.addEventListener('click', () => {
+  const now = performance.now();
+  tapTimes.push(now);
+  tapTimes = tapTimes.filter(t => now - t < 3000).slice(-5);
+  if (tapTimes.length > 1) {
+    const iv = [];
+    for (let i = 1; i < tapTimes.length; i++) iv.push(tapTimes[i] - tapTimes[i-1]);
+    setBpm(60000 / (iv.reduce((a,b)=>a+b,0) / iv.length));
+  }
+});
 
-      if (tapTimes.length > 1) {
-        const intervals = [];
-        for (let i = 1; i < tapTimes.length; i++) {
-          intervals.push(tapTimes[i] - tapTimes[i - 1]);
-        }
-        const averageInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
-        let bpm = Math.round(60000 / averageInterval);
-        
-        // BPMを30から250の範囲に制限
-        if (bpm < 30) bpm = 30;
-        if (bpm > 250) bpm = 250;
+// ====== タップ判定(代替案A) ======
+function judgeTap() {
+  if (!isRunning || !audioCtx) {
+    lastJudge.textContent = 'メトロノームを開始してください';
+    lastJudge.style.color = 'var(--text)';
+    return;
+  }
+  const t = audioCtx.currentTime;
+  const spb = 60 / bpm;
+  // 最も近い拍(過去・未来両方)との偏差
+  let best = null;
+  for (const b of scheduledBeats) {
+    const d = (t - b.time) * 1000; // +なら遅い, −なら早い
+    if (best === null || Math.abs(d) < Math.abs(best)) best = d;
+  }
+  if (best === null) return;
+  const dev = Math.round(best);
+  taps.push(dev);
 
-        bpmInput.value = bpm;
-      }
-    }
+  // 判定色
+  const a = Math.abs(dev);
+  const color = a <= 30 ? 'var(--good)' : a <= 70 ? 'var(--ok)' : 'var(--bad)';
+  const label = a <= 30 ? 'GOOD!' : (dev < 0 ? '走り' : 'もたり');
+  lastJudge.textContent = `${label} ${dev > 0 ? '+' : ''}${dev}ms`;
+  lastJudge.style.color = color;
 
-    // ボタンにイベントリスナーを追加
-    startButton.addEventListener('click', startMetronome);
-    stopButton.addEventListener('click', stopMetronome);
-    tapTempoButton.addEventListener('click', updateTapTempo); // タップテンポボタンにイベントリスナーを追加
-  </script>
+  // 円周上にマーカー(偏差→角度: 1拍=360°)
+  const frac = best / (spb * 1000);
+  const deg = frac * 360;
+  const r = circleWrap.offsetWidth / 2;
+  const m = document.createElement('div');
+  m.className = 'tap-marker';
+  m.style.background = color;
+  m.style.transform =
+    `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+  circleWrap.appendChild(m);
+  tapMarkers.push(m);
+  if (tapMarkers.length > 12) tapMarkers.shift().remove();
+  setTimeout(() => { m.style.opacity = '0.25'; }, 1200);
+
+  updateStats();
+}
+function updateStats() {
+  stTaps.textContent = taps.length;
+  if (taps.length) {
+    const avg = taps.reduce((a,b)=>a+b,0) / taps.length;
+    stAvg.textContent = `${avg > 0 ? '+' : ''}${Math.round(avg)}ms`;
+    stEarly.textContent = taps.filter(d => d < -30).length;
+    stLate.textContent = taps.filter(d => d > 30).length;
+  } else {
+    stAvg.textContent = '—'; stEarly.textContent = 0; stLate.textContent = 0;
+  }
+}
+tapPad.addEventListener('pointerdown', e => { e.preventDefault(); judgeTap(); });
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') {
+    e.preventDefault(); judgeTap();
+  }
+});
+$('resetStats').addEventListener('click', () => {
+  taps = [];
+  tapMarkers.forEach(m => m.remove());
+  tapMarkers = [];
+  lastJudge.textContent = '';
+  updateStats();
+});
+</script>
 </body>
 </html>
