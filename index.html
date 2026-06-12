@@ -10,13 +10,13 @@
     --text: #7A8A6A;
     --line: #A4B494;
     --dot: #6A5ACD;
-    --flash: #b0c4de;
     --good: #4CAF50;
     --ok: #FF9800;
     --bad: #E53935;
     --n8: #6A5ACD;
     --n16: #2E86AB;
     --n3: #E07A5F;
+    --nura: #C2185B;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -46,16 +46,6 @@
     height: min(78vw, 64vmin, 360px);
     margin: 6px 0;
   }
-  .flash {
-    position: absolute; inset: 0;
-    border-radius: 50%;
-    background: var(--flash);
-    opacity: 0;
-    transition: opacity 0.12s ease-in-out;
-    pointer-events: none;
-    z-index: 1;
-  }
-  .flash.show { opacity: 0.85; }
   .circle {
     position: absolute; inset: 0;
     border: 3px solid var(--line);
@@ -205,6 +195,25 @@
   #startStop.running { background: var(--bad); }
   #tapTempo { background: var(--line); }
 
+  /* トグルボタン(カウントイン) */
+  .toggle-btn {
+    border: 1.5px solid var(--line);
+    background: #fffef8;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    flex: 1;
+    min-width: 110px;
+  }
+  .toggle-btn.on {
+    background: var(--dot);
+    border-color: var(--dot);
+    color: #fff;
+  }
+
   /* ===== ノート・ミキシング ===== */
   .mix-row {
     display: grid;
@@ -274,7 +283,6 @@
 
   <!-- 円形ビジュアライザー(1周 = 1拍、拍頭 = 3時) -->
   <div class="circle-wrap" id="circleWrap">
-    <div class="flash" id="flash"></div>
     <div class="circle"></div>
     <div class="zero-mark"></div>
     <div class="beat-number" id="beatNumber">1</div>
@@ -313,14 +321,6 @@
           <option value="440">Click 3</option>
         </select>
       </label>
-      <label class="field">アクセント
-        <select id="accent">
-          <option value="">なし</option>
-          <option value="1" selected>1</option>
-          <option value="1,3">1 & 3</option>
-          <option value="2,4">2 & 4</option>
-        </select>
-      </label>
       <label class="field">音量
         <input type="range" id="volume" min="0" max="100" value="50">
       </label>
@@ -329,7 +329,7 @@
 
   <!-- ノート・ミキシング -->
   <details open>
-    <summary>ノート・ミキシング</summary>
+    <summary id="mixSummary">ノート・ミキシング</summary>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
       <div class="mix-row">
         <span class="note-label"><span class="swatch" style="background:var(--text)"></span>4分音符</span>
@@ -350,6 +350,11 @@
         <span class="note-label"><span class="swatch" style="background:var(--n3)"></span>3連符</span>
         <input type="range" class="mix" id="mix3" min="0" max="100" value="0">
         <span class="pct" id="pct3">0</span>
+      </div>
+      <div class="mix-row">
+        <span class="note-label"><span class="swatch" style="background:var(--nura)"></span>裏拍</span>
+        <input type="range" class="mix" id="mixUra" min="0" max="100" value="0">
+        <span class="pct" id="pctUra">0</span>
       </div>
     </div>
   </details>
@@ -374,6 +379,9 @@
       <label class="field">小節数/段階
         <input type="number" id="rampMeasures" value="4" min="1" max="99">
       </label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button class="toggle-btn" id="countInBtn">カウントイン: OFF</button>
     </div>
     <div class="ramp-status" id="rampStatus"></div>
   </details>
@@ -431,9 +439,9 @@
 // ====== 要素 ======
 const $ = id => document.getElementById(id);
 const bpmVal = $('bpmVal'), bpmSlider = $('bpmSlider');
-const beatsSel = $('beats'), soundSel = $('sound'), accentSel = $('accent'), volumeInput = $('volume');
+const beatsSel = $('beats'), soundSel = $('sound'), volumeInput = $('volume');
 const startStopBtn = $('startStop'), tapTempoBtn = $('tapTempo');
-const dot = $('dot'), flash = $('flash'), beatNumber = $('beatNumber'), circleWrap = $('circleWrap');
+const dot = $('dot'), beatNumber = $('beatNumber'), circleWrap = $('circleWrap');
 const tapPad = $('tapPad'), lastJudge = $('lastJudge');
 const stTaps = $('stTaps'), stAvg = $('stAvg'), stEarly = $('stEarly'), stLate = $('stLate');
 
@@ -447,6 +455,10 @@ let nextNoteTime = 0;        // 次の拍の予定時刻(audioCtx基準)
 let beatInMeasure = 0;       // 0始まり
 let scheduledBeats = [];     // {time, num} 直近の拍(描画・判定用)
 let measureCount = 0;
+
+// カウントイン
+let countInOn = false;
+let countInBeatsLeft = 0;
 
 // タップ判定
 let taps = [];               // 偏差ms の配列
@@ -496,7 +508,7 @@ function audioNow() {
   const auto = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
   return audioCtx.currentTime - auto - manual;
 }
-function scheduleClick(time, freq, vol, dur = 0.03) {
+function scheduleClick(time, freq, vol, dur = 0.02) {
   if (vol <= 0) return;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -512,17 +524,19 @@ function scheduleClick(time, freq, vol, dur = 0.03) {
 // ====== ノート・ミキシング ======
 function getMix() {
   return {
-    n4:  +$('mix4').value / 100,
-    n8:  +$('mix8').value / 100,
-    n16: +$('mix16').value / 100,
-    n3:  +$('mix3').value / 100,
+    n4:   +$('mix4').value / 100,
+    n8:   +$('mix8').value / 100,
+    n16:  +$('mix16').value / 100,
+    n3:   +$('mix3').value / 100,
+    nUra: +$('mixUra').value / 100,
   };
 }
 const LAYERS = [
-  { key: 'n4',  offsets: [0],                    freqRatio: 1.0,  dur: 0.04  },
-  { key: 'n8',  offsets: [0, 1/2],               freqRatio: 0.75, dur: 0.025 },
-  { key: 'n16', offsets: [0, 1/4, 1/2, 3/4],     freqRatio: 0.6,  dur: 0.02  },
-  { key: 'n3',  offsets: [0, 1/3, 2/3],          freqRatio: 0.5,  dur: 0.025 },
+  { key: 'n4',   offsets: [0],                freqRatio: 1.0,  dur: 0.02 },
+  { key: 'n8',   offsets: [0, 1/2],           freqRatio: 0.75, dur: 0.02 },
+  { key: 'n16',  offsets: [0, 1/4, 1/2, 3/4], freqRatio: 0.6,  dur: 0.02 },
+  { key: 'n3',   offsets: [0, 1/3, 2/3],      freqRatio: 0.5,  dur: 0.02 },
+  { key: 'nUra', offsets: [1/2],              freqRatio: 0.85, dur: 0.02 }, // 8分休符+8分音符(裏のみ)
 ];
 function scheduleBeat(time, spb) {
   const mix = getMix();
@@ -539,9 +553,10 @@ function scheduleBeat(time, spb) {
 
 // 円周上の分割マーク表示(有効レイヤーの音価を可視化)
 const SUB_MARK_DEFS = [
-  { id: 'mix8',  degs: [180],            color: 'var(--n8)'  },
-  { id: 'mix16', degs: [90, 180, 270],   color: 'var(--n16)' },
-  { id: 'mix3',  degs: [120, 240],       color: 'var(--n3)'  },
+  { id: 'mix8',   degs: [180],          color: 'var(--n8)'   },
+  { id: 'mix16',  degs: [90, 180, 270], color: 'var(--n16)'  },
+  { id: 'mix3',   degs: [120, 240],     color: 'var(--n3)'   },
+  { id: 'mixUra', degs: [180],          color: 'var(--nura)' },
 ];
 let subMarkEls = [];
 function updateSubMarks() {
@@ -560,21 +575,48 @@ function updateSubMarks() {
     }
   }
 }
+// 全レイヤー0(無音)のとき見出しに警告を表示
+function updateMixSummary() {
+  const m = getMix();
+  const silent = m.n4 + m.n8 + m.n16 + m.n3 + m.nUra <= 0;
+  $('mixSummary').textContent = silent
+    ? 'ノート・ミキシング ⚠ 全て0:無音です'
+    : 'ノート・ミキシング';
+}
 document.querySelectorAll('.mix').forEach(sl => {
   sl.addEventListener('input', () => {
     $('pct' + sl.id.replace('mix', '')).textContent = sl.value;
     updateSubMarks();
+    updateMixSummary();
   });
+});
+updateMixSummary();
+
+// ====== カウントイン ======
+$('countInBtn').addEventListener('click', () => {
+  countInOn = !countInOn;
+  $('countInBtn').textContent = `カウントイン: ${countInOn ? 'ON' : 'OFF'}`;
+  $('countInBtn').classList.toggle('on', countInOn);
 });
 
 // ====== スケジューラ ======
-function getAccents() {
-  return accentSel.value ? accentSel.value.split(',').map(Number) : [];
-}
 function scheduler() {
   const beats = parseInt(beatsSel.value, 10); // "4/4" → 4(分子=1小節の拍数)
   while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
     const spb = 60 / bpm;
+
+    // カウントイン中:素の4分クリックのみ(本編の小節カウントには含めない)
+    if (countInBeatsLeft > 0) {
+      const num = beats - countInBeatsLeft + 1;
+      scheduleClick(nextNoteTime, +soundSel.value, volumeInput.value / 100);
+      scheduledBeats.push({ time: nextNoteTime, num });
+      if (scheduledBeats.length > 12) scheduledBeats.shift();
+      countInBeatsLeft--;
+      if (countInBeatsLeft === 0) $('rampStatus').textContent = '';
+      nextNoteTime += spb;
+      continue;
+    }
+
     const beatNum = (beatInMeasure % beats) + 1;
 
     // 小節頭(次の小節を鳴らす前)に練習モードを処理
@@ -687,10 +729,6 @@ function draw(ts) {
     if (cur.num !== lastShownBeat) {
       lastShownBeat = cur.num;
       beatNumber.textContent = cur.num;
-      if (getAccents().includes(cur.num)) {
-        flash.classList.add('show');
-        setTimeout(() => flash.classList.remove('show'), 120);
-      }
     }
   }
   rafId = requestAnimationFrame(draw);
@@ -710,6 +748,9 @@ function start() {
   if ($('rampMode').value !== 'off') {
     setBpm(+$('rampStart').value || bpm);
   }
+  // カウントイン:本編の前に1小節分の素の4分クリック
+  countInBeatsLeft = countInOn ? parseInt(beatsSel.value, 10) : 0;
+  if (countInBeatsLeft > 0) $('rampStatus').textContent = 'カウントイン…';
   nextNoteTime = audioCtx.currentTime + 0.1;
   scheduler();
   schedulerTimer = setInterval(scheduler, LOOKAHEAD_MS);
