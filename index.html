@@ -39,7 +39,7 @@
   }
   h1 { font-size: 15px; letter-spacing: 0.15em; margin: 4px 0 0; font-weight: 600; }
 
-  /* ===== 円形ビジュアライザー ===== */
+  /* ===== 円形ビジュアライザー(0° = 3時、時計回り) ===== */
   .circle-wrap {
     position: relative;
     width: min(78vw, 64vmin, 360px);
@@ -62,13 +62,13 @@
     border-radius: 50%;
     z-index: 2;
   }
-  /* 拍頭マーク(12時位置) */
+  /* 拍頭マーク(3時位置) */
   .zero-mark {
     position: absolute;
-    top: -7px; left: 50%;
-    width: 4px; height: 16px;
+    top: 50%; right: -7px;
+    width: 16px; height: 4px;
     background: var(--text);
-    transform: translateX(-50%);
+    transform: translateY(-50%);
     border-radius: 2px;
     z-index: 3;
   }
@@ -89,6 +89,15 @@
     border-radius: 50%;
     z-index: 4;
     box-shadow: 0 0 8px rgba(106,90,205,0.5);
+  }
+  .trail {
+    position: absolute;
+    top: 50%; left: 50%;
+    background: var(--dot);
+    border-radius: 50%;
+    z-index: 3;
+    opacity: 0;
+    pointer-events: none;
   }
   .beat-number {
     position: absolute; inset: 0;
@@ -145,7 +154,6 @@
     color: #555;
   }
   input[type=range] { width: 100%; accent-color: var(--dot); }
-
   input[type=number]:disabled, select:disabled {
     background: #e5e2d8;
     color: #aaa;
@@ -249,7 +257,7 @@
   .legend { font-size: 11px; text-align: center; opacity: 0.85; }
   .legend span { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 2px 0 8px; vertical-align: middle; }
 
-  /* ===== 練習モード ===== */
+  /* ===== 開閉ボックス ===== */
   details {
     width: 100%;
     background: rgba(255,255,255,0.35);
@@ -264,7 +272,7 @@
 <div class="app">
   <h1>● 円形メトロノーム</h1>
 
-  <!-- 円形ビジュアライザー(1周 = 1拍) -->
+  <!-- 円形ビジュアライザー(1周 = 1拍、拍頭 = 3時) -->
   <div class="circle-wrap" id="circleWrap">
     <div class="flash" id="flash"></div>
     <div class="circle"></div>
@@ -407,7 +415,7 @@
         </label>
       </div>
       <p style="margin:0">
-        <b>使い方:</b>ドットが12時マークを通過する瞬間とクリック音を見比べ、
+        <b>使い方:</b>ドットが3時の拍頭マークを通過する瞬間とクリック音を見比べ、
         ドットが音より<b>先行</b>するならプラス方向、<b>遅れる</b>ならマイナス方向に5〜10msずつ調整。
         ノート・ミキシングで16分音符を上げると円周上の4点で照合でき、追い込みやすくなります。
       </p>
@@ -450,6 +458,11 @@ let tapTimes = [];
 const LOOKAHEAD_MS = 25;
 const SCHEDULE_AHEAD = 0.12; // 秒
 
+// ====== 角度ヘルパー(0° = 3時、時計回り) ======
+function ringTransform(deg, r) {
+  return `translate(-50%,-50%) rotate(${deg}deg) translate(${r}px) rotate(${-deg}deg)`;
+}
+
 // ====== BPM操作 ======
 function setBpm(v) {
   bpm = Math.min(250, Math.max(30, Math.round(v)));
@@ -470,26 +483,33 @@ function ensureAudio() {
   if (audioCtx.state === 'suspended') audioCtx.resume();
 }
 // 「実際に音が聞こえる時刻」基準の現在時刻
-// currentTime(予約タイムライン)から出力レイテンシと手動補正を引く
+// getOutputTimestamp(今スピーカーから出ている音のタイムライン時刻)を優先使用し、
+// 非対応環境では outputLatency による推定にフォールバック
 function audioNow() {
-  const auto = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
   const manual = (+$('visOffset').value || 0) / 1000;
+  if (audioCtx.getOutputTimestamp) {
+    const ts = audioCtx.getOutputTimestamp();
+    if (ts && typeof ts.contextTime === 'number' && ts.contextTime > 0 && ts.performanceTime > 0) {
+      return ts.contextTime + (performance.now() - ts.performanceTime) / 1000 - manual;
+    }
+  }
+  const auto = (audioCtx.outputLatency || 0) + (audioCtx.baseLatency || 0);
   return audioCtx.currentTime - auto - manual;
 }
-function scheduleClick(time, freq, vol) {
+function scheduleClick(time, freq, vol, dur = 0.03) {
   if (vol <= 0) return;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
-  osc.type = 'sine';
+  // 三角波 + 短いエンベロープで、時間上の「点」として聞こえる鋭いクリックにする
+  osc.type = 'triangle';
   osc.frequency.setValueAtTime(freq, time);
   gain.gain.setValueAtTime(Math.max(0.001, vol), time);
-  gain.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+  gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
   osc.connect(gain); gain.connect(audioCtx.destination);
-  osc.start(time); osc.stop(time + 0.09);
+  osc.start(time); osc.stop(time + dur + 0.005);
 }
 
 // ====== ノート・ミキシング ======
-// 各レイヤー: [1拍内の分割位置(0〜1の配列), 周波数倍率]
 function getMix() {
   return {
     n4:  +$('mix4').value / 100,
@@ -499,10 +519,10 @@ function getMix() {
   };
 }
 const LAYERS = [
-  { key: 'n4',  offsets: [0],                    freqRatio: 1.0  },
-  { key: 'n8',  offsets: [0, 1/2],               freqRatio: 0.75 },
-  { key: 'n16', offsets: [0, 1/4, 1/2, 3/4],     freqRatio: 0.6  },
-  { key: 'n3',  offsets: [0, 1/3, 2/3],          freqRatio: 0.5  },
+  { key: 'n4',  offsets: [0],                    freqRatio: 1.0,  dur: 0.04  },
+  { key: 'n8',  offsets: [0, 1/2],               freqRatio: 0.75, dur: 0.025 },
+  { key: 'n16', offsets: [0, 1/4, 1/2, 3/4],     freqRatio: 0.6,  dur: 0.02  },
+  { key: 'n3',  offsets: [0, 1/3, 2/3],          freqRatio: 0.5,  dur: 0.025 },
 ];
 function scheduleBeat(time, spb) {
   const mix = getMix();
@@ -512,7 +532,7 @@ function scheduleBeat(time, spb) {
     const vol = master * mix[layer.key];
     if (vol <= 0) continue;
     for (const off of layer.offsets) {
-      scheduleClick(time + off * spb, base * layer.freqRatio, vol);
+      scheduleClick(time + off * spb, base * layer.freqRatio, vol, layer.dur);
     }
   }
 }
@@ -534,8 +554,7 @@ function updateSubMarks() {
       const m = document.createElement('div');
       m.className = 'sub-mark';
       m.style.background = def.color;
-      m.style.transform =
-        `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+      m.style.transform = ringTransform(deg, r);
       circleWrap.appendChild(m);
       subMarkEls.push(m);
     }
@@ -562,7 +581,7 @@ function scheduler() {
     if (beatNum === 1 && beatInMeasure > 0) {
       measureCount++;
       if (applyRamp()) {
-        // 終了BPMの小節を弾き終えた → 最後の拍が鳴り終わるタイミングで停止
+        // 終了BPMで指定小節数を弾き終えた → 最後の拍が鳴り終わるタイミングで停止
         clearInterval(schedulerTimer);
         const delay = Math.max(0, (nextNoteTime - audioCtx.currentTime) * 1000);
         setTimeout(() => {
@@ -619,10 +638,40 @@ function applyRamp() {
   return false;
 }
 
-// ====== 描画(1周 = 1拍) ======
+// ====== ドットの残像(モーショントレイル) ======
+const TRAIL_COUNT = 5;
+const trails = [];
+for (let i = 0; i < TRAIL_COUNT; i++) {
+  const t = document.createElement('div');
+  t.className = 'trail';
+  const size = 20 - i * 3; // 後ろほど小さく
+  t.style.width = size + 'px';
+  t.style.height = size + 'px';
+  circleWrap.appendChild(t);
+  trails.push(t);
+}
+function setTrail(deg, r, degPerFrame) {
+  const step = Math.max(2, degPerFrame * 0.9); // 速いほど尾が伸びる
+  trails.forEach((t, i) => {
+    const td = deg - (i + 1) * step;
+    t.style.opacity = (0.4 * (1 - i / TRAIL_COUNT)).toFixed(2);
+    t.style.transform = ringTransform(td, r);
+  });
+}
+function hideTrail() {
+  trails.forEach(t => { t.style.opacity = '0'; });
+}
+
+// ====== 描画(1周 = 1拍、拍頭 = 3時) ======
 let lastShownBeat = null;
-function draw() {
-  const now = audioNow();
+let lastFrameTs = 0, frameDur = 1 / 60;
+function draw(ts) {
+  // 描画は次フレームで画面に出るため、1フレーム分先の時刻で位置を計算する
+  if (ts && lastFrameTs) {
+    frameDur = Math.min(0.05, Math.max(0.008, (ts - lastFrameTs) / 1000));
+  }
+  if (ts) lastFrameTs = ts;
+  const now = audioNow() + frameDur;
   const spb = 60 / bpm;
   // 現在進行中の拍(time <= now の最新)を探す
   let cur = null;
@@ -633,8 +682,8 @@ function draw() {
     const progress = Math.min(1, (now - cur.time) / spb);
     const deg = progress * 360;
     const r = circleWrap.offsetWidth / 2;
-    dot.style.transform =
-      `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+    dot.style.transform = ringTransform(deg, r);
+    setTrail(deg, r, 360 * frameDur / spb);
     if (cur.num !== lastShownBeat) {
       lastShownBeat = cur.num;
       beatNumber.textContent = cur.num;
@@ -655,6 +704,7 @@ function start() {
   measureCount = 0;
   scheduledBeats = [];
   lastShownBeat = null;
+  lastFrameTs = 0;
   measuresAtTempo = 0;
   // 練習モード時は開始BPMから始める
   if ($('rampMode').value !== 'off') {
@@ -679,10 +729,11 @@ function stop() {
 }
 startStopBtn.addEventListener('click', () => isRunning ? stop() : start());
 
-// 初期位置(12時)— loadイベント待ちだと環境により発火済みで実行されないため即時実行
+// 初期位置(3時)— loadイベント待ちだと環境により発火済みで実行されないため即時実行
 function resetDotPosition() {
   const r = circleWrap.offsetWidth / 2;
-  dot.style.transform = `translate(-50%,-50%) rotate(-90deg) translate(${r}px) rotate(90deg)`;
+  dot.style.transform = ringTransform(0, r);
+  hideTrail();
 }
 resetDotPosition();
 updateSubMarks();
@@ -729,15 +780,14 @@ function judgeTap() {
   lastJudge.textContent = `${label} ${dev > 0 ? '+' : ''}${dev}ms`;
   lastJudge.style.color = color;
 
-  // 円周上にマーカー(偏差→角度: 1拍=360°)
+  // 円周上にマーカー(偏差→角度: 1拍=360°、拍頭=3時)
   const frac = best / (spb * 1000);
   const deg = frac * 360;
   const r = circleWrap.offsetWidth / 2;
   const m = document.createElement('div');
   m.className = 'tap-marker';
   m.style.background = color;
-  m.style.transform =
-    `translate(-50%,-50%) rotate(${deg - 90}deg) translate(${r}px) rotate(${90 - deg}deg)`;
+  m.style.transform = ringTransform(deg, r);
   circleWrap.appendChild(m);
   tapMarkers.push(m);
   if (tapMarkers.length > 12) tapMarkers.shift().remove();
