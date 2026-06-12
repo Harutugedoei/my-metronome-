@@ -146,6 +146,13 @@
   }
   input[type=range] { width: 100%; accent-color: var(--dot); }
 
+  input[type=number]:disabled, select:disabled {
+    background: #e5e2d8;
+    color: #aaa;
+    border-color: #c8c8bc;
+  }
+  label.field:has(input:disabled) { opacity: 0.55; }
+
   .bpm-row {
     display: flex;
     align-items: center;
@@ -285,8 +292,10 @@
     <div class="row">
       <label class="field">拍子
         <select id="beats">
-          <option>1</option><option>2</option><option>3</option>
-          <option selected>4</option><option>5</option><option>6</option><option>7</option>
+          <option value="1/4">1/4</option>
+          <option value="2/4">2/4</option>
+          <option value="3/4">3/4</option>
+          <option value="4/4" selected>4/4</option>
         </select>
       </label>
       <label class="field">音
@@ -337,8 +346,32 @@
     </div>
   </details>
 
+  <!-- 練習モード:テンポ漸増/漸減 -->
+  <details>
+    <summary>練習モード(テンポ漸増・漸減)</summary>
+    <div class="row" style="margin-top:8px">
+      <label class="field">モード
+        <select id="rampMode">
+          <option value="off">通常</option>
+          <option value="up">2テンポずつUP</option>
+          <option value="down">2テンポずつDOWN</option>
+        </select>
+      </label>
+      <label class="field">開始BPM
+        <input type="number" id="rampStart" value="80" min="30" max="250">
+      </label>
+      <label class="field">終了BPM
+        <input type="number" id="rampEnd" value="120" min="30" max="250">
+      </label>
+      <label class="field">小節数/段階
+        <input type="number" id="rampMeasures" value="4" min="1" max="99">
+      </label>
+    </div>
+    <div class="ramp-status" id="rampStatus"></div>
+  </details>
+
   <!-- タップ判定モード -->
-  <details open>
+  <details>
     <summary>Rhythm TAP(タップ判定)</summary>
     <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
       <div id="tapPad">Rhythm TAP<small>メトロノームに合わせてタップ(スペースキー可)</small></div>
@@ -356,27 +389,6 @@
         <button id="resetStats" style="margin-left:10px;border:none;background:var(--line);color:#fff;border-radius:8px;padding:4px 12px;font-size:11px;font-weight:700;cursor:pointer">リセット</button>
       </div>
     </div>
-  </details>
-
-  <!-- 練習モード:テンポ漸増/漸減 -->
-  <details>
-    <summary>練習モード(テンポ漸増・漸減)</summary>
-    <div class="row" style="margin-top:8px">
-      <label class="field">モード
-        <select id="rampMode">
-          <option value="off">通常</option>
-          <option value="up">漸増</option>
-          <option value="down">漸減</option>
-        </select>
-      </label>
-      <label class="field">目標BPM
-        <input type="number" id="rampTarget" value="120" min="30" max="250">
-      </label>
-      <label class="field">小節ごと±
-        <input type="number" id="rampStep" value="2" min="1" max="20">
-      </label>
-    </div>
-    <div class="ramp-status" id="rampStatus"></div>
   </details>
 
   <!-- レイテンシ補正 -->
@@ -541,36 +553,70 @@ function getAccents() {
   return accentSel.value ? accentSel.value.split(',').map(Number) : [];
 }
 function scheduler() {
-  const beats = +beatsSel.value;
+  const beats = parseInt(beatsSel.value, 10); // "4/4" → 4(分子=1小節の拍数)
   while (nextNoteTime < audioCtx.currentTime + SCHEDULE_AHEAD) {
     const spb = 60 / bpm;
     const beatNum = (beatInMeasure % beats) + 1;
+
+    // 小節頭(次の小節を鳴らす前)に練習モードを処理
+    if (beatNum === 1 && beatInMeasure > 0) {
+      measureCount++;
+      if (applyRamp()) {
+        // 終了BPMの小節を弾き終えた → 最後の拍が鳴り終わるタイミングで停止
+        clearInterval(schedulerTimer);
+        const delay = Math.max(0, (nextNoteTime - audioCtx.currentTime) * 1000);
+        setTimeout(() => {
+          if (isRunning) stop();
+          $('rampStatus').textContent = `完了! ${$('rampEnd').value} BPM まで到達(${measureCount}小節)🎉`;
+        }, delay);
+        return;
+      }
+    }
+
     scheduleBeat(nextNoteTime, spb);
     scheduledBeats.push({ time: nextNoteTime, num: beatNum });
     if (scheduledBeats.length > 12) scheduledBeats.shift();
 
-    // 小節頭で練習モードのテンポ更新
-    if (beatNum === 1 && beatInMeasure > 0) {
-      measureCount++;
-      applyRamp();
-    }
     nextNoteTime += 60 / bpm;
     beatInMeasure++;
   }
 }
 
-// ====== 練習モード(漸増/漸減) ======
+// ====== 練習モード(2テンポずつ漸増/漸減) ======
+// 通常モード時は設定項目をグレーアウト
+function updateRampFieldState() {
+  const off = $('rampMode').value === 'off';
+  ['rampStart', 'rampEnd', 'rampMeasures'].forEach(id => { $(id).disabled = off; });
+}
+$('rampMode').addEventListener('change', updateRampFieldState);
+updateRampFieldState();
+
+// 小節頭で呼ばれる。終了BPMで指定小節数を弾き終えていたら true(=再生終了)を返す
+const RAMP_STEP = 2;
+let measuresAtTempo = 0; // 現テンポで弾き終えた小節数
 function applyRamp() {
   const mode = $('rampMode').value;
-  if (mode === 'off') { $('rampStatus').textContent = ''; return; }
-  const target = Math.min(250, Math.max(30, +$('rampTarget').value || bpm));
-  const step = Math.max(1, +$('rampStep').value || 1);
-  if (mode === 'up' && bpm < target) setBpm(Math.min(target, bpm + step));
-  if (mode === 'down' && bpm > target) setBpm(Math.max(target, bpm - step));
-  const done = (mode === 'up' && bpm >= target) || (mode === 'down' && bpm <= target);
-  $('rampStatus').textContent = done
-    ? `目標 ${target} BPM 到達! 🎉(${measureCount}小節)`
-    : `小節 ${measureCount}:現在 ${bpm} → 目標 ${target} BPM`;
+  if (mode === 'off') { $('rampStatus').textContent = ''; return false; }
+  const end = Math.min(250, Math.max(30, +$('rampEnd').value || bpm));
+  const perStep = Math.max(1, +$('rampMeasures').value || 1);
+
+  measuresAtTempo++;
+  const atEnd = (mode === 'up' && bpm >= end) || (mode === 'down' && bpm <= end);
+
+  // 現テンポでの指定小節数がまだ終わっていない → 継続
+  if (measuresAtTempo < perStep) {
+    $('rampStatus').textContent =
+      `${bpm} BPM:${measuresAtTempo}/${perStep}小節 → 終了 ${end} BPM`;
+    return false;
+  }
+  // 指定小節数を弾き終えた
+  if (atEnd) return true; // 終了BPMで弾き終えた → 再生終了
+  if (mode === 'up')   setBpm(Math.min(end, bpm + RAMP_STEP));
+  if (mode === 'down') setBpm(Math.max(end, bpm - RAMP_STEP));
+  measuresAtTempo = 0;
+  $('rampStatus').textContent =
+    `${bpm} BPM:0/${perStep}小節 → 終了 ${end} BPM`;
+  return false;
 }
 
 // ====== 描画(1周 = 1拍) ======
@@ -609,6 +655,11 @@ function start() {
   measureCount = 0;
   scheduledBeats = [];
   lastShownBeat = null;
+  measuresAtTempo = 0;
+  // 練習モード時は開始BPMから始める
+  if ($('rampMode').value !== 'off') {
+    setBpm(+$('rampStart').value || bpm);
+  }
   nextNoteTime = audioCtx.currentTime + 0.1;
   scheduler();
   schedulerTimer = setInterval(scheduler, LOOKAHEAD_MS);
